@@ -1,0 +1,22 @@
+# Entorno virtual
+.venv/
+
+# Datos de sesiones (generados por el juego)
+data/
+data_test/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
