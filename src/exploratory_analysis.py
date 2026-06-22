@@ -94,16 +94,19 @@ def _load_session(session_dir: Path) -> Optional[SessionData]:
     # Calcular altura de pila previa a cada pieza.
     stack_heights = []
     available_times = []
+    is_first_piece = []
     for _, row in piece_df.iterrows():
         t_spawn = row["t_spawn_ms"]
         gravity = row["gravity_at_spawn"]
-        # Snapshot previo mas cercano a t_spawn.
         prev_snapshot = _previous_stack_height(snapshots, row["game_id"], t_spawn)
         stack_heights.append(prev_snapshot)
         available_times.append(_available_fall_time(prev_snapshot, gravity))
+        # La primera pieza de cada partida no es comparable: incluye tiempo de arranque.
+        is_first_piece.append(int(row["piece_idx"]) == 0)
 
     piece_df["stack_height"] = stack_heights
     piece_df["available_fall_time_ms"] = available_times
+    piece_df["is_first_piece"] = is_first_piece
 
     return SessionData(
         session_id=meta.get("session_id", session_dir.name),
@@ -153,12 +156,13 @@ def _parse_board(board_json: Any) -> np.ndarray:
 
 
 def board_height(board: np.ndarray) -> int:
-    """Altura de la pila: fila mas alta ocupada + 1. 0 si vacio."""
+    """Altura de la pila: numero de filas ocupadas contando desde abajo. 0 si vacio."""
     occupied_rows = np.where(board.any(axis=1))[0]
     if len(occupied_rows) == 0:
         return 0
     # Las filas crecen hacia abajo; la mas alta es el minimo indice.
-    return int(occupied_rows.min())
+    # Altura real = filas totales - indice de la fila mas alta.
+    return int(BOARD_HEIGHT - occupied_rows.min())
 
 
 def _available_fall_time(stack_height: int, gravity_cps: float) -> Optional[float]:
@@ -279,6 +283,26 @@ def spearman_and_regression(df: pd.DataFrame, x_col: str, y_col: str) -> Dict[st
     }
 
 
+def partial_correlation_spearman(
+    df: pd.DataFrame, x: str, y: str, control: str
+) -> Dict[str, Any]:
+    """Correlacion parcial de Spearman controlando por una tercera variable."""
+    data = df[[x, y, control]].dropna()
+    if len(data) < 4:
+        return {"n": len(data), "r": None, "p": None}
+    # Ranking de cada variable.
+    rx = data[x].rank()
+    ry = data[y].rank()
+    rc = data[control].rank()
+    # Residuos de regresion lineal de rank sobre control.
+    slope_x, intercept_x, _, _, _ = stats.linregress(rc, rx)
+    slope_y, intercept_y, _, _, _ = stats.linregress(rc, ry)
+    resid_x = rx - (slope_x * rc + intercept_x)
+    resid_y = ry - (slope_y * rc + intercept_y)
+    r, p = stats.pearsonr(resid_x, resid_y)
+    return {"n": len(data), "r": round(float(r), 4), "p": round(float(p), 4)}
+
+
 def analyze_intra_ramp(sessions: List[SessionData], n_bins: int = 6) -> Dict[str, Any]:
     """Analisis 1: trayectoria intra-ramp."""
     ramp_dfs = [s.piece_df for s in sessions if s.condition == "ramp"]
@@ -288,6 +312,9 @@ def analyze_intra_ramp(sessions: List[SessionData], n_bins: int = 6) -> Dict[str
     df = pd.concat(ramp_dfs, ignore_index=True)
     df = df[df["n_inputs"].notna()]
 
+    # Excluir primera pieza de cada partida del analisis de time_to_first_input.
+    df_first = df[df["is_first_piece"] == False]
+
     # Manejo de piezas con n_inputs <= 1: excluir de active_time.
     df_active = df[(df["n_inputs"] > 1) & (df["active_time_ms"].notna())]
 
@@ -296,11 +323,12 @@ def analyze_intra_ramp(sessions: List[SessionData], n_bins: int = 6) -> Dict[str
 
     results = {
         "n_pieces": len(df),
+        "n_pieces_first_excluded": len(df_first),
         "n_pieces_active_time": len(df_active),
         "bin_strategy": "quantile (bins de igual N, mas robustos)",
         primary_metric: {
-            "by_gravity_bin": bin_summary(df, primary_metric, n_bins=n_bins, bin_strategy="quantile").to_dict("records"),
-            "correlation": spearman_and_regression(df, "gravity_at_spawn", primary_metric),
+            "by_gravity_bin": bin_summary(df_first, primary_metric, n_bins=n_bins, bin_strategy="quantile").to_dict("records"),
+            "correlation": spearman_and_regression(df_first, "gravity_at_spawn", primary_metric),
         },
         secondary_metric: {
             "by_gravity_bin": bin_summary(df, secondary_metric, n_bins=n_bins, bin_strategy="quantile").to_dict("records"),
@@ -311,8 +339,12 @@ def analyze_intra_ramp(sessions: List[SessionData], n_bins: int = 6) -> Dict[str
             "correlation": spearman_and_regression(df_active, "gravity_at_spawn", "active_time_ms"),
         },
         "control_physical_ceiling": {
+            "note": "Primera pieza de cada partida excluida de time_to_first_input_ms.",
             "correlation_available_time_vs_first_input": spearman_and_regression(
-                df, "available_fall_time_ms", primary_metric
+                df_first, "available_fall_time_ms", primary_metric
+            ),
+            "correlation_available_time_vs_first_input_control_stack_height": partial_correlation_spearman(
+                df_first, "available_fall_time_ms", primary_metric, "stack_height"
             ),
             "correlation_available_time_vs_n_inputs": spearman_and_regression(
                 df, "available_fall_time_ms", secondary_metric
@@ -327,6 +359,7 @@ def analyze_conditions(sessions: List[SessionData]) -> pd.DataFrame:
     rows = []
     for s in sessions:
         df = s.piece_df
+        df_first = df[df["is_first_piece"] == False]
         df_active = df[(df["n_inputs"] > 1) & (df["active_time_ms"].notna())]
         row = {
             "session_id": s.session_id,
@@ -335,8 +368,8 @@ def analyze_conditions(sessions: List[SessionData]) -> pd.DataFrame:
             "hour": _iso_hour(s.wall_clock_start),
             "perceived_effort": s.perceived_effort,
             "n_pieces": len(df),
-            "time_to_first_input_mean": df["time_to_first_input_ms"].mean() if not df.empty else None,
-            "time_to_first_input_std": df["time_to_first_input_ms"].std(ddof=0) if not df.empty else None,
+            "time_to_first_input_mean": df_first["time_to_first_input_ms"].mean() if not df_first.empty else None,
+            "time_to_first_input_std": df_first["time_to_first_input_ms"].std(ddof=0) if not df_first.empty else None,
             "n_inputs_mean": df["n_inputs"].mean() if not df.empty else None,
             "n_inputs_std": df["n_inputs"].std(ddof=0) if not df.empty else None,
             "active_time_mean": df_active["active_time_ms"].mean() if not df_active.empty else None,
@@ -362,6 +395,9 @@ def analyze_sigma(
         return {"error": "No hay sesiones ramp"}
 
     df = pd.concat(ramp_dfs, ignore_index=True)
+    # Excluir primera pieza de cada partida para time_to_first_input_ms.
+    if metric == "time_to_first_input_ms":
+        df = df[df["is_first_piece"] == False]
     df = df.sort_values("t_spawn_ms").reset_index(drop=True)
 
     if len(df) < window_n_pieces * 2:
@@ -571,8 +607,9 @@ def analyze_autocorrelation(sessions: List[SessionData]) -> Dict[str, Any]:
             "metrics": {},
         }
         for metric in metrics:
-            acf_raw = compute_acf(df[metric], max_lag=10)
-            acf_resid = compute_acf(df[metric], max_lag=10, detrend_window=15)
+            series = df[df["is_first_piece"] == False][metric] if metric == "time_to_first_input_ms" else df[metric]
+            acf_raw = compute_acf(series, max_lag=10)
+            acf_resid = compute_acf(series, max_lag=10, detrend_window=15)
             theta_raw = ou_theta_from_acf(acf_raw)
             theta_resid = ou_theta_from_acf(acf_resid)
             session_result["metrics"][metric] = {
@@ -700,14 +737,20 @@ def verdict_intra_ramp(results: Dict[str, Any], sigma_results: Dict[str, Dict[st
 
     if primary_negative:
         verdict = (
-            "**Veredicto exploratorio:** hay un efecto real del campo sobre la **media** de la respuesta "
-            "(reaccionas mas rapido y haces menos inputs cuando la gravedad sube), respaldado por el control "
-            "fisico hermetico para `time_to_first_input_ms`. "
-            "**Sobre la volatilidad (σ): el resultado es indeterminado por diseño de la rampa, no negativo.** "
-            "La rampa actual alcanza 6.0 cps en 120 s y se queda en meseta; el 60% de las ventanas estan "
-            "apiladas en g=6.0, con solo 2-3 ventanas en la fase de contraccion real (g<6). "
-            "No se puede establecer si el CV/σ residualizada sube, baja o no se mueve con la contraccion. "
-            "Para Fase 2: matar la meseta (rampa mas lenta o partida que termine antes de la meseta)."
+            "**Veredicto exploratorio:** hay un efecto del campo sobre la **media** de la respuesta "
+            "(reaccionas mas rapido y haces menos inputs cuando la gravedad sube). "
+            "El control fisico muestra que parte de este efecto es mecanico: `available_fall_time_ms` "
+            "correlaciona positivamente con `time_to_first_input_ms` (r≈0.35), y aun controlando por "
+            "`stack_height` la correlacion parcial sigue siendo positiva y pequena (r≈0.15). "
+            "Esto no invalida la direccion predicha, pero advierte que el limite de tiempo fisico es un "
+            "mediador parcial, no un confound externo que se pueda 'parcializar' sin mas. "
+            "**Sobre la volatilidad (σ): el resultado es mixto e indeterminado aun con la rampa de 300 s.** "
+            "Las ventanas ahora se reparten de g≈1.4 a 6.0 (13 ventanas), pero CV y σ residualizada no muestran "
+            "una firma clara ni consistente entre metricas: CV de `n_inputs` sube con la gravedad, mientras que "
+            "CV de `time_to_first_input_ms` baja, y la σ residualizada no presenta tendencia significativa. "
+            "No se puede declarar σ↑/σ↓ con la evidencia actual. "
+            "Para Fase 2: mas repeticiones bajo control estricto (una variable a la vez, cafeina/horario fijos) "
+            "y, si se desea probar σ, usar una rampa que evite la meseta de 6.0 cps o terminar la partida antes de ella."
         )
     else:
         verdict = (
@@ -754,9 +797,8 @@ def generate_report(
         "",
         "## Analisis 1 — Trayectoria intra-ramp",
         "",
-        "Métrica primaria: `time_to_first_input_ms`. Secundaria: `n_inputs`. `active_time_ms` como apoyo.",
-        "",
-        f"Estrategia de bins: {intra_ramp_results.get('bin_strategy', 'quantile')}.",
+        "Métrica primaria: `time_to_first_input_ms`. Secundaria: `n_inputs`. `active_time_ms` como apoyo. "
+        "La primera pieza de cada partida se excluye de `time_to_first_input_ms` porque incluye el tiempo de arranque.",
         "",
         "### time_to_first_input_ms por bin de gravedad",
         "",
@@ -775,11 +817,15 @@ def generate_report(
         "### Control fisico — tiempo de caida disponible",
         "",
         "Se calculo la altura de la pila previa a cada pieza y el tiempo que la pieza tardaria en caer por gravedad. "
-        "Si la metrica cae solo porque el tiempo disponible se acorta, el efecto es mecanico, no conductual.",
+        "Si la metrica cae solo porque el tiempo disponible se acorta, el efecto es mecanico, no conductual. "
+        "Tambien se controla por altura de pila (`stack_height`) para separar presion situacional de limite fisico.",
         "",
-        "- Correlacion `available_fall_time_ms` vs `time_to_first_input_ms`: "
+        "- Correlacion `available_fall_time_ms` vs `time_to_first_input_ms` (primera pieza excluida): "
         f"r={intra_ramp_results['control_physical_ceiling']['correlation_available_time_vs_first_input']['spearman_r']}, "
         f"p={intra_ramp_results['control_physical_ceiling']['correlation_available_time_vs_first_input']['spearman_p']}",
+        "- Correlacion parcial controlando por `stack_height`: "
+        f"r={intra_ramp_results['control_physical_ceiling']['correlation_available_time_vs_first_input_control_stack_height']['r']}, "
+        f"p={intra_ramp_results['control_physical_ceiling']['correlation_available_time_vs_first_input_control_stack_height']['p']}",
         "- Correlacion `available_fall_time_ms` vs `n_inputs`: "
         f"r={intra_ramp_results['control_physical_ceiling']['correlation_available_time_vs_n_inputs']['spearman_r']}, "
         f"p={intra_ramp_results['control_physical_ceiling']['correlation_available_time_vs_n_inputs']['spearman_p']}",
@@ -792,8 +838,10 @@ def generate_report(
         "",
         f"![Condiciones]({figure_paths['conditions']})",
         "",
-        "_Nota: la sesion `hard` esta etiquetada como `pre_decision_time_correction` y se jugo de madrugada; "
-        "tratar por separado o como contexto, no promediar con las demas._",
+        "_Notas: (1) la sesion `hard` esta etiquetada como `pre_decision_time_correction` y se jugo de madrugada; "
+        "tratar por separado o como contexto. (2) Las dos sesiones `ramp` difieren en dos variables a la vez: "
+        "la curva de rampa (120s vs 300s) y la cafeina (0mg vs 200mg). El esfuerzo 8→2 no es atribuible "
+        "a ninguna de las dos sola. Para Fase 2: una variable a la vez._",
         "",
         "## Analisis 3 — σ-Tetris (volatilidad por ventana)",
         "",
