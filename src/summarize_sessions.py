@@ -75,11 +75,19 @@ def summarize_session(session_dir: Path) -> Optional[Dict[str, Any]]:
 
     behavioral = summarize_piece_metrics(pieces_path, actions_path)
 
+    git_hash = meta.get("software_git_hash")
+    session_label = (
+        "pre_decision_time_correction"
+        if git_hash in (None, "unknown", "")
+        else "tracked"
+    )
+
     return {
         "session_id": meta.get("session_id"),
         "wall_clock_start": meta.get("wall_clock_start"),
         "condition": meta.get("condition"),
-        "software_git_hash": meta.get("software_git_hash"),
+        "software_git_hash": git_hash,
+        "session_label": session_label,
         "state_covariates": meta.get("state_covariates", {}),
         "perceived_effort_1_10": meta.get("perceived_effort_1_10"),
         "config": meta.get("config", {}),
@@ -134,6 +142,7 @@ def write_summaries(summaries: List[Dict[str, Any]], output_root: str = "data") 
                 "wall_clock_start": s["wall_clock_start"],
                 "condition": s["condition"],
                 "software_git_hash": s["software_git_hash"],
+                "session_label": s["session_label"],
                 "perceived_effort_1_10": s["perceived_effort_1_10"],
                 "total_games": s["total_games"],
                 "total_pieces": s["total_pieces"],

@@ -38,6 +38,18 @@ Los datos se guardan en `data/<session_id>/`.
 .venv\Scripts\python -m src.validate_session data/<session_id>
 ```
 
+## Análisis exploratorio
+
+```bash
+.venv\Scripts\python run_exploratory_analysis.py
+```
+
+Genera en `data/exploratory/`:
+- `exploratory_report.md` con tablas, correlaciones y veredicto.
+- `intra_ramp.png`, `conditions.png`, `sigma.png`.
+
+El análisis es **exploratorio**: decide si las métricas conductuales responden a la contracción del campo antes de invertir en infraestructura confirmatoria.
+
 ## Resumen consolidado de todas las sesiones
 
 ```bash

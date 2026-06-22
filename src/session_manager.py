@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .logger import SessionLogger, _iso_with_tz
+from .summarize_sessions import summarize_all, write_summaries
 from .tetris_core import (
     EASY_GRAVITY_CPS,
     HARD_GRAVITY_CPS,
@@ -165,6 +166,16 @@ def run_session(condition: Optional[str] = None) -> str:
     effort = prompt_effort()
     logger.close_session(perceived_effort=effort)
     print(f"Sesión guardada en: {logger.session_dir}")
+
+    # Regenerar consolidado automáticamente tras cada sesión.
+    print("\nRegenerando consolidado de sesiones...")
+    try:
+        summaries = summarize_all("data")
+        write_summaries(summaries, "data")
+        print(f"Consolidado actualizado con {len(summaries)} sesión(es).")
+    except Exception as e:
+        print(f"[ADVERTENCIA] No se pudo regenerar el consolidado: {e}")
+
     return logger.session_id
 
 
