@@ -346,6 +346,12 @@ def analyze_intra_ramp(sessions: List[SessionData], n_bins: int = 6) -> Dict[str
             "correlation_available_time_vs_first_input_control_stack_height": partial_correlation_spearman(
                 df_first, "available_fall_time_ms", primary_metric, "stack_height"
             ),
+            "correlation_gravity_vs_first_input_control_stack_height": partial_correlation_spearman(
+                df_first, "gravity_at_spawn", primary_metric, "stack_height"
+            ),
+            "correlation_gravity_vs_n_inputs_control_stack_height": partial_correlation_spearman(
+                df, "gravity_at_spawn", secondary_metric, "stack_height"
+            ),
             "correlation_available_time_vs_n_inputs": spearman_and_regression(
                 df, "available_fall_time_ms", secondary_metric
             ),
@@ -735,22 +741,28 @@ def verdict_intra_ramp(results: Dict[str, Any], sigma_results: Dict[str, Dict[st
 
     primary_negative = (primary.get("spearman_r") or 0) < 0
 
+    ctrl = results["control_physical_ceiling"]
+    partial_first = ctrl.get("correlation_gravity_vs_first_input_control_stack_height", {})
+    partial_n = ctrl.get("correlation_gravity_vs_n_inputs_control_stack_height", {})
+
     if primary_negative:
         verdict = (
-            "**Veredicto exploratorio:** hay un efecto del campo sobre la **media** de la respuesta "
-            "(reaccionas mas rapido y haces menos inputs cuando la gravedad sube). "
-            "El control fisico muestra que parte de este efecto es mecanico: `available_fall_time_ms` "
-            "correlaciona positivamente con `time_to_first_input_ms` (r≈0.35), y aun controlando por "
-            "`stack_height` la correlacion parcial sigue siendo positiva y pequena (r≈0.15). "
-            "Esto no invalida la direccion predicha, pero advierte que el limite de tiempo fisico es un "
-            "mediador parcial, no un confound externo que se pueda 'parcializar' sin mas. "
-            "**Sobre la volatilidad (σ): el resultado es mixto e indeterminado aun con la rampa de 300 s.** "
-            "Las ventanas ahora se reparten de g≈1.4 a 6.0 (13 ventanas), pero CV y σ residualizada no muestran "
-            "una firma clara ni consistente entre metricas: CV de `n_inputs` sube con la gravedad, mientras que "
-            "CV de `time_to_first_input_ms` baja, y la σ residualizada no presenta tendencia significativa. "
-            "No se puede declarar σ↑/σ↓ con la evidencia actual. "
-            "Para Fase 2: mas repeticiones bajo control estricto (una variable a la vez, cafeina/horario fijos) "
-            "y, si se desea probar σ, usar una rampa que evite la meseta de 6.0 cps o terminar la partida antes de ella."
+            "**Veredicto exploratorio:** el efecto del campo sobre el **nivel** se descompone distinto "
+            "segun la metrica, y el bug en `board_height()` lo habia ocultado. Con la altura bien calculada: "
+            "`available_fall_time_ms` correlaciona con `time_to_first_input_ms` (r≈0.35); controlando por "
+            "`stack_height` baja a r≈0.15. Pero lo decisivo es que la correlacion gravedad→`time_to_first_input_ms` "
+            f"controlando por `stack_height` desaparece (r={partial_first.get('r')}, p={partial_first.get('p')}). "
+            "En `n_inputs` la historia es distinta: la correlacion con gravedad es robusta "
+            f"(r={secondary.get('spearman_r')}, p={secondary.get('spearman_p')}) y controlando por `stack_height` "
+            f"sigue siendo {partial_n.get('r')}, p={partial_n.get('p')}. "
+            "Asi que el efecto sobre el nivel esta principalmente en **cuanto manipulas**, no en **cuando reaccionas**. "
+            "**Sobre la volatilidad (σ): la respuesta es plana.** Con la rampa de 300 s y 13 ventanas "
+            "repartidas de g≈1.4 a 6.0, el CV se mueve por el nivel medio (sube para `n_inputs`, baja para "
+            "`time_to_first_input_ms`), pero la σ residualizada no tiene tendencia significativa en ninguna metrica. "
+            "La firma σ↑ de PUBG no se replica en Tetris. "
+            "**Implicacion para Fase 2:** ya no es 'confirmar σ↑ con un null'. Es probar si existe un observable "
+            "transversal de respuesta-a-contraccion, o si cada dominio tiene su propia firma (volatilidad en PUBG, "
+            "nivel/manipulacion en Tetris). Eso requiere pre-registrar la metrica primaria antes de recolectar."
         )
     else:
         verdict = (
@@ -826,6 +838,12 @@ def generate_report(
         "- Correlacion parcial controlando por `stack_height`: "
         f"r={intra_ramp_results['control_physical_ceiling']['correlation_available_time_vs_first_input_control_stack_height']['r']}, "
         f"p={intra_ramp_results['control_physical_ceiling']['correlation_available_time_vs_first_input_control_stack_height']['p']}",
+        "- Correlacion `gravity_at_spawn` vs `time_to_first_input_ms` controlando por `stack_height`: "
+        f"r={intra_ramp_results['control_physical_ceiling']['correlation_gravity_vs_first_input_control_stack_height']['r']}, "
+        f"p={intra_ramp_results['control_physical_ceiling']['correlation_gravity_vs_first_input_control_stack_height']['p']}",
+        "- Correlacion `gravity_at_spawn` vs `n_inputs` controlando por `stack_height`: "
+        f"r={intra_ramp_results['control_physical_ceiling']['correlation_gravity_vs_n_inputs_control_stack_height']['r']}, "
+        f"p={intra_ramp_results['control_physical_ceiling']['correlation_gravity_vs_n_inputs_control_stack_height']['p']}",
         "- Correlacion `available_fall_time_ms` vs `n_inputs`: "
         f"r={intra_ramp_results['control_physical_ceiling']['correlation_available_time_vs_n_inputs']['spearman_r']}, "
         f"p={intra_ramp_results['control_physical_ceiling']['correlation_available_time_vs_n_inputs']['spearman_p']}",
