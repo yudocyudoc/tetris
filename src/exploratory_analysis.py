@@ -511,6 +511,149 @@ def plot_sigma(sigma_results: Dict[str, Any], output_path: Path, title_suffix: s
     plt.close(fig)
 
 
+def compute_acf(series: pd.Series, max_lag: int = 10, detrend_window: Optional[int] = None) -> Dict[int, float]:
+    """Autocorrelacion de una serie. Si detrend_window se indica, resta media movil."""
+    s = series.dropna().astype(float).values
+    if len(s) < max_lag + 2:
+        return {}
+
+    if detrend_window:
+        # Media movil centrada para quitar tendencia local.
+        half = detrend_window // 2
+        trend = np.array([np.mean(s[max(0, i - half) : min(len(s), i + half + 1)]) for i in range(len(s))])
+        s = s - trend
+
+    s = s - np.mean(s)
+    n = len(s)
+    c0 = np.sum(s ** 2) / n
+    if c0 == 0:
+        return {}
+
+    acf = {}
+    for lag in range(0, max_lag + 1):
+        if lag == 0:
+            acf[lag] = 1.0
+        else:
+            c_lag = np.sum(s[:-lag] * s[lag:]) / n
+            acf[lag] = float(c_lag / c0)
+    return acf
+
+
+def ou_theta_from_acf(acf: Dict[int, float], dt_pieces: float = 1.0) -> Optional[float]:
+    """Estimacion exploratoria de theta de O/U desde ACF(1).
+
+    En O/U discreto: rho(1) = exp(-theta * dt). dt se mide en piezas.
+    Reportar solo como descriptor, no como estimador confirmatorio.
+    """
+    rho1 = acf.get(1)
+    if rho1 is None or rho1 <= 0 or rho1 >= 1:
+        return None
+    return -np.log(rho1) / dt_pieces
+
+
+def analyze_autocorrelation(sessions: List[SessionData]) -> Dict[str, Any]:
+    """Analisis 4 (PoC): autocorrelacion temporal y ajuste O/U exploratorio.
+
+    Exploratorio, no confirmatorio. La rampa no es estacionaria; se reportan
+    residuos de media movil para mitigar la tendencia, pero el theta sigue
+    siendo un descriptor, no una prueba del modelo bayesiano.
+    """
+    results = {"sessions": [], "by_condition": {}}
+
+    metrics = ["time_to_first_input_ms", "n_inputs"]
+
+    for s in sessions:
+        df = s.piece_df.sort_values("t_spawn_ms").reset_index(drop=True)
+        session_result = {
+            "session_id": s.session_id,
+            "condition": s.condition,
+            "n_pieces": len(df),
+            "metrics": {},
+        }
+        for metric in metrics:
+            acf_raw = compute_acf(df[metric], max_lag=10)
+            acf_resid = compute_acf(df[metric], max_lag=10, detrend_window=15)
+            theta_raw = ou_theta_from_acf(acf_raw)
+            theta_resid = ou_theta_from_acf(acf_resid)
+            session_result["metrics"][metric] = {
+                "acf_raw": acf_raw,
+                "acf_resid": acf_resid,
+                "theta_raw": theta_raw,
+                "theta_resid": theta_resid,
+            }
+
+        # Para ramp, segmentos temporales (early/mid/late) para ver cambio en estructura.
+        if s.condition == "ramp" and len(df) >= 45:
+            third = len(df) // 3
+            segments = {
+                "early": df.iloc[:third],
+                "mid": df.iloc[third:2*third],
+                "late": df.iloc[2*third:],
+            }
+            session_result["ramp_segments"] = {}
+            for seg_name, seg_df in segments.items():
+                session_result["ramp_segments"][seg_name] = {}
+                for metric in metrics:
+                    acf = compute_acf(seg_df[metric], max_lag=5, detrend_window=7)
+                    session_result["ramp_segments"][seg_name][metric] = {
+                        "acf": acf,
+                        "theta": ou_theta_from_acf(acf),
+                    }
+
+        results["sessions"].append(session_result)
+
+    # Agregado por condicion (promedio simple de ACF cruda; descriptor).
+    for condition in set(s.condition for s in sessions):
+        cond_results = [r for r in results["sessions"] if r["condition"] == condition]
+        results["by_condition"][condition] = {}
+        for metric in metrics:
+            acfs = [r["metrics"][metric]["acf_resid"] for r in cond_results if r["metrics"][metric].get("acf_resid")]
+            if not acfs:
+                continue
+            max_lag = max(max(a.keys()) for a in acfs)
+            mean_acf = {}
+            for lag in range(max_lag + 1):
+                vals = [a.get(lag) for a in acfs if lag in a]
+                if vals:
+                    mean_acf[lag] = float(np.mean(vals))
+            results["by_condition"][condition][metric] = {
+                "mean_acf_resid": mean_acf,
+                "theta_resid": ou_theta_from_acf(mean_acf),
+            }
+
+    return results
+
+
+def plot_autocorrelation(acf_results: Dict[str, Any], output_path: Path) -> None:
+    """Figura: funciones de autocorrelacion por condicion y metrica."""
+    conditions = list(acf_results["by_condition"].keys())
+    metrics = ["time_to_first_input_ms", "n_inputs"]
+
+    fig, axes = plt.subplots(len(metrics), len(conditions), figsize=(5 * len(conditions), 4 * len(metrics)), squeeze=False)
+
+    for i, metric in enumerate(metrics):
+        for j, condition in enumerate(conditions):
+            ax = axes[i][j]
+            data = acf_results["by_condition"].get(condition, {}).get(metric, {})
+            acf = data.get("mean_acf_resid", {})
+            if not acf:
+                ax.set_title(f"{condition} / {metric}\n(sin datos)")
+                continue
+            lags = sorted(acf.keys())
+            values = [acf[l] for l in lags]
+            ax.stem(lags, values, basefmt=" ")
+            ax.axhline(0, color="black", lw=0.5)
+            ax.set_xlabel("lag (piezas)")
+            ax.set_ylabel("ACF (residuos)")
+            ax.set_title(f"{condition} / {metric}\nθ={data.get('theta_resid'):.3f}" if data.get("theta_resid") is not None else f"{condition} / {metric}")
+            ax.set_ylim(-0.5, 1.0)
+
+    fig.suptitle("Autocorrelacion (PoC) — residuos de media movil")
+    plt.tight_layout()
+    fig.savefig(output_path, dpi=150)
+    plt.close(fig)
+
+
 def render_table(df: pd.DataFrame) -> str:
     if df.empty:
         return "_Sin datos._"
@@ -580,6 +723,7 @@ def generate_report(
     intra_ramp_results: Dict[str, Any],
     condition_summary: pd.DataFrame,
     sigma_results: Dict[str, Dict[str, Any]],
+    autocorr_results: Dict[str, Any],
     output_path: Path,
     figure_paths: Dict[str, Path],
 ) -> None:
@@ -678,11 +822,71 @@ def generate_report(
         "- Se reporta N por bin y CV ademas de σ.",
         "- Sesiones sin git hash se marcan como `pre_decision_time_correction`.",
         "",
+        "## Analisis 4 — Autocorrelacion temporal (PoC exploratorio)",
+        "",
+        "**Proposito:** explorar si existe estructura de dependencia temporal en las metricas conductuales "
+        "y si esa estructura cambia con la condicion o a lo largo de la rampa. "
+        "**No es confirmatorio:** no prueba el modelo O/U, ni mecanismos bayesianos, ni ajuste de 'temperatura'.",
+        "",
+        "Se calcula la funcion de autocorrelacion (ACF) sobre los residuos de una media movil "
+        "(para mitigar la no estacionariedad de la rampa). El parametro θ de O/U se deriva de ACF(1) "
+        "como descriptor: θ = -ln(rho(1)). Valores mas altos implican decaimiento mas rapido de la autocorrelacion.",
+        "",
+        f"![Autocorrelacion]({figure_paths['autocorrelation']})",
+        "",
+        "### θ exploratorio por sesion (residuos)",
+        "",
+        render_table(
+            pd.DataFrame(
+                [
+                    {
+                        "session_id": r["session_id"],
+                        "condition": r["condition"],
+                        "theta_time_to_first_input": r["metrics"]["time_to_first_input_ms"].get("theta_resid"),
+                        "theta_n_inputs": r["metrics"]["n_inputs"].get("theta_resid"),
+                    }
+                    for r in autocorr_results["sessions"]
+                ]
+            )
+        ),
+        "",
+    ])
+
+    # Segmentos ramp.
+    ramp_segments = [r for r in autocorr_results["sessions"] if "ramp_segments" in r]
+    if ramp_segments:
+        lines.extend([
+            "### Segmentos dentro de la sesion ramp (early / mid / late)",
+            "",
+            "Exploracion de si la estructura temporal cambia a medida que la gravedad sube. "
+            "N pequeno por segmento; interpretar con extrema cautela.",
+            "",
+        ])
+        for r in ramp_segments:
+            lines.extend([
+                f"**Sesion {r['session_id']}**",
+                "",
+            ])
+            rows = []
+            for seg_name, seg_data in r["ramp_segments"].items():
+                for metric in ["time_to_first_input_ms", "n_inputs"]:
+                    rows.append(
+                        {
+                            "segment": seg_name,
+                            "metric": metric,
+                            "theta": seg_data[metric].get("theta"),
+                            "acf_lag1": seg_data[metric]["acf"].get(1),
+                        }
+                    )
+            lines.append(render_table(pd.DataFrame(rows)))
+            lines.append("")
+
+    lines.extend([
         "## Lo que queda fuera (Fase 2)",
         "",
         "- Modelos jerarquicos y multiples sujetos.",
         "- Diseño del agente null (politica insensible a la velocidad).",
-        "- Pre-registro confirmatorio.",
+        "- Pre-registro confirmatorio del analisis temporal (si se decide testear O/U u otro modelo).",
     ])
 
     with open(output_path, "w", encoding="utf-8") as f:
@@ -711,6 +915,7 @@ def run_all(data_root: str = "data", output_root: str = "data") -> Dict[str, Any
     condition_summary = analyze_conditions(sessions)
     sigma_n_inputs = analyze_sigma(sessions, metric="n_inputs", window_n_pieces=15)
     sigma_first_input = analyze_sigma(sessions, metric="time_to_first_input_ms", window_n_pieces=15)
+    autocorr_results = analyze_autocorrelation(sessions)
 
     # Figuras.
     ramp_df = pd.concat([s.piece_df for s in sessions if s.condition == "ramp"], ignore_index=True)
@@ -731,11 +936,15 @@ def run_all(data_root: str = "data", output_root: str = "data") -> Dict[str, Any
         plot_sigma(sigma, path, title_suffix=metric_name)
         fig_sigma_paths[key] = path.name
 
+    fig_autocorr = out_dir / "autocorrelation.png"
+    plot_autocorrelation(autocorr_results, fig_autocorr)
+
     # Reporte.
     report_path = out_dir / "exploratory_report.md"
     figure_paths = {
         "intra_ramp": fig_intra.name,
         "conditions": fig_conditions.name,
+        "autocorrelation": fig_autocorr.name,
     }
     figure_paths.update(fig_sigma_paths)
     generate_report(
@@ -743,6 +952,7 @@ def run_all(data_root: str = "data", output_root: str = "data") -> Dict[str, Any
         intra_ramp,
         condition_summary,
         sigma_metrics,
+        autocorr_results,
         report_path,
         figure_paths,
     )
@@ -752,6 +962,7 @@ def run_all(data_root: str = "data", output_root: str = "data") -> Dict[str, Any
         "intra_ramp": intra_ramp,
         "condition_summary": condition_summary,
         "sigma": sigma_metrics,
+        "autocorrelation": autocorr_results,
         "report": str(report_path),
         "figures": {k: str(v) for k, v in figure_paths.items()},
     }
