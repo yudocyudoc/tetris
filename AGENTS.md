@@ -50,7 +50,8 @@ Implementar un Tetris en Python para un piloto idiográfico N=1. El objetivo es 
 ## Qué es la señal y qué no
 
 - **`decision_time_ms = t_lock − t_spawn` es contexto, no señal principal.** Está contaminado por la gravedad: en `hard` (3.5 celdas/s) una pieza que cae 20 filas tarda ~5.7 s, que se convierte en techo artificial de `decision_time`. No mide deliberación, mide física de caída.
-- **Eje principal del σ:** `n_inputs` (número de acciones de juego sobre la pieza). Es una medida conductual genuina, poco atada a la gravedad.
+- **Efecto de campo robusto (Análisis 1):** `time_to_first_input_ms` cae cuando `gravity_at_spawn` sube, y sobrevive al control físico. Es un efecto sobre el **nivel** del comportamiento.
+- **σ (volatilidad):** no usar σ absoluta —es artefacto media-varianza cuando la media cae. Usar CV o σ residualizada. **Importante:** con la rampa original (120 s de subida + meseta) el análisis de σ es indeterminado porque la mayoría de las ventanas caen en la meseta a 6.0 cps. La rampa se corrigió a 300 s de subida para distribuir las piezas a lo largo de la contracción.
 - **Métricas derivadas limpias de `actions.csv`:**
   - `time_to_first_input_ms`: latencia desde spawn hasta primer acción de juego.
   - `active_time_ms`: tiempo entre primera y última acción de juego (manipulación real).

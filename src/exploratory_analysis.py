@@ -560,10 +560,11 @@ def verdict_intra_ramp(results: Dict[str, Any], sigma_results: Dict[str, Dict[st
             "**Veredicto exploratorio:** hay un efecto real del campo sobre la **media** de la respuesta "
             "(reaccionas mas rapido y haces menos inputs cuando la gravedad sube), respaldado por el control "
             "fisico hermetico para `time_to_first_input_ms`. "
-            "Sin embargo, **no se replica la firma σ de PUBG**: la volatilidad absoluta cae con la gravedad, "
-            "y el CV / σ residualizada no muestra un aumento claro. "
-            "La respuesta de Tetris parece ser de nivel, no de volatilidad creciente. "
-            "Eso no descarta el paradigma, pero cambia la pregunta de Fase 2: ¿es el mismo constructo?"
+            "**Sobre la volatilidad (σ): el resultado es indeterminado por diseño de la rampa, no negativo.** "
+            "La rampa actual alcanza 6.0 cps en 120 s y se queda en meseta; el 60% de las ventanas estan "
+            "apiladas en g=6.0, con solo 2-3 ventanas en la fase de contraccion real (g<6). "
+            "No se puede establecer si el CV/σ residualizada sube, baja o no se mueve con la contraccion. "
+            "Para Fase 2: matar la meseta (rampa mas lenta o partida que termine antes de la meseta)."
         )
     else:
         verdict = (
