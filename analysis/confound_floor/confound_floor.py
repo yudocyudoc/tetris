@@ -668,13 +668,16 @@ def run_regressions(df: pd.DataFrame, agent_type: str) -> Dict:
         # "col_transitions" se excluye: en este sustrato es casi lineal con n_holes (r≈0.99).
     ]
 
-    formula1 = "action ~ p_grad + " + " + ".join(features_bcts)
+    # Usamos p_grad_excess = p_grad - p_stat como regresor principal.
+    # p_grad crudo contiene la componente estacionaria p_stat(H) que el no-tracker
+    # usa legítimamente; el contraste tracker/no-tracker vive en el exceso.
+    formula1 = "action ~ p_grad_excess + " + " + ".join(features_bcts)
     sum1 = fit_logit(formula1, df_agent, label=f" {agent_type} m1")
 
     # Control oráculo: board_full features
     full_cols = ["h_max", "h_std", "h_range", "total_holes", "holes_std", "h_skew"]
     full_cols = [c for c in full_cols if c in df_agent.columns]
-    formula2 = "action ~ p_grad + " + " + ".join(full_cols)
+    formula2 = "action ~ p_grad_excess + " + " + ".join(full_cols)
     sum2 = fit_logit(formula2, df_agent, label=f" {agent_type} m2")
 
     # Sin survivorship (confound B): IPW por probabilidad de supervivencia.
@@ -842,6 +845,11 @@ def main() -> int:
           f"no_tracker={len(df[df.agent_type=='no_tracker'])}")
 
     # Guardar log crudo
+    # Regresor corregido: p_grad - p_stat (la parte de p_grad que excede el saber estacionario).
+    # p_grad crudo contiene p_stat, que el no-tracker usa legítimamente; restarla evita
+    # atribuirle al tracking la respuesta a H/N.
+    df["p_grad_excess"] = df["p_grad"] - df["p_stat"]
+
     df_save = df.drop(columns=["board_full"])
     df_save.to_csv(out_dir / "decisions_log.csv", index=False)
     df_save.to_parquet(out_dir / "decisions_log.parquet", index=False)
@@ -852,9 +860,9 @@ def main() -> int:
         results[agent_type] = run_regressions(df, agent_type)
 
     print("[4/5] Calculando descomposición A/B y rama...")
-    beta1, p1, ci1_low, ci1_high = extract_beta(results["no_tracker"]["model1_bruto"], "p_grad")
-    beta2, p2, ci2_low, ci2_high = extract_beta(results["no_tracker"]["model2_oracle"], "p_grad")
-    beta3, p3, ci3_low, ci3_high = extract_beta(results["no_tracker"]["model3_lowH"], "p_grad")
+    beta1, p1, ci1_low, ci1_high = extract_beta(results["no_tracker"]["model1_bruto"], "p_grad_excess")
+    beta2, p2, ci2_low, ci2_high = extract_beta(results["no_tracker"]["model2_oracle"], "p_grad_excess")
+    beta3, p3, ci3_low, ci3_high = extract_beta(results["no_tracker"]["model3_lowH"], "p_grad_excess")
 
     contrib_A = beta1 - beta2 if beta1 is not None and beta2 is not None else None
     contrib_B = beta1 - beta3 if beta1 is not None and beta3 is not None else None
@@ -875,18 +883,21 @@ def main() -> int:
         },
         "N_lookup": {str(H): {"mean": N_lookup[H][0], "std": N_lookup[H][1]} for H in sorted(N_lookup)},
         "beta_piso_bruto": {
+            "regressor": "p_grad_excess",
             "beta": beta1,
             "pvalue": p1,
             "ci_low": ci1_low,
             "ci_high": ci1_high,
         },
         "beta_oracle": {
+            "regressor": "p_grad_excess",
             "beta": beta2,
             "pvalue": p2,
             "ci_low": ci2_low,
             "ci_high": ci2_high,
         },
         "beta_lowH": {
+            "regressor": "p_grad_excess",
             "beta": beta3,
             "pvalue": p3,
             "ci_low": ci3_low,
@@ -913,7 +924,7 @@ def main() -> int:
                 "agent_type": agent_type,
                 "model": model_name,
                 "N": summary.get("nobs"),
-                "beta_p_grad": b,
+                "beta_p_grad_excess": b,
                 "pvalue": p,
                 "ci_low": ci_low,
                 "ci_high": ci_high,
@@ -932,9 +943,9 @@ def main() -> int:
         if b is None:
             return "NA"
         return f"{b:.4f} (CI {ci_low:.4f}, {ci_high:.4f}), p={p:.4g}"
-    print(f"beta_piso_bruto = {fmt_beta(beta1, ci1_low, ci1_high, p1)}")
-    print(f"beta_oracle     = {fmt_beta(beta2, ci2_low, ci2_high, p2)}")
-    print(f"beta_lowH       = {fmt_beta(beta3, ci3_low, ci3_high, p3)}")
+    print(f"beta_piso_bruto (p_grad_excess) = {fmt_beta(beta1, ci1_low, ci1_high, p1)}")
+    print(f"beta_oracle     (p_grad_excess) = {fmt_beta(beta2, ci2_low, ci2_high, p2)}")
+    print(f"beta_lowH       (p_grad_excess) = {fmt_beta(beta3, ci3_low, ci3_high, p3)}")
     print(f"contrib_A       = {contrib_A:.4f}" if contrib_A is not None else "contrib_A       = NA")
     print(f"contrib_B       = {contrib_B:.4f}" if contrib_B is not None else "contrib_B       = NA")
     print(f"Rama            = {rama}")
