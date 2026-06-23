@@ -527,6 +527,7 @@ def simulate_game(
     params: AgentParams,
     N_lookup: Dict[int, Tuple[float, float]],
     H0: int = 8,
+    no_censorship: bool = False,
 ) -> List[Dict]:
     """Simula una partida y devuelve lista de decisiones logueadas."""
     gen = SevenBagGenerator(seed)
@@ -592,7 +593,7 @@ def simulate_game(
             survived = "I" in future
             record["survived_next"] = survived
             decisions.append(record)
-            if not survived:
+            if not no_censorship and not survived:
                 alive = False
                 break
             board = new_board
@@ -806,6 +807,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--n_sims_N", type=int, default=200,
                         help="Simulaciones por H para estimar N(H)")
     parser.add_argument("--out", type=str, default="out", help="Directorio de salida")
+    parser.add_argument("--no_censorship", action="store_true",
+                        help="Desactiva la censura por topar (para validar confound B)")
     return parser.parse_args()
 
 
@@ -837,7 +840,8 @@ def main() -> int:
         for g in range(args.n_games):
             seed = int(args.seed + g + (100_000 if agent_type == "no_tracker" else 0))
             H0 = int(rng.choice(H0_values))
-            decisions = simulate_game(seed, agent_type, params, N_lookup, H0=H0)
+            decisions = simulate_game(seed, agent_type, params, N_lookup, H0=H0,
+                                       no_censorship=args.no_censorship)
             all_decisions.extend(decisions)
 
     df = pd.DataFrame(all_decisions)

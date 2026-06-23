@@ -156,18 +156,18 @@ Son un resumen **lossy** de `board_full`. La distancia entre este vector y `boar
 
 Correr **sobre datos del no-tracker** (y replicar en tracker como contraste):
 
-1. **Piso bruto:** `action ~ p_grad + BCTS_features`. → `β(p_grad)` = **β_piso bruto** (contiene A + B).
-2. **Control oráculo (aísla A):** `action ~ p_grad + f(board_full)` con control rico del tablero verdadero. Si `β(p_grad)` cae a ≈0 aquí, se confirma que el residuo del modelo (1) era **insuficiencia de featurización** (confound A). El gap `β(1) − β(2)` cuantifica A.
-3. **Sin survivorship (aísla B):** repetir el modelo (1) pero (a) restringido a estados de bajo H no censurados, o (b) con ponderación por inverso de probabilidad de supervivencia. La diferencia con (1) cuantifica B.
+1. **Piso bruto:** `action ~ p_grad_excess + BCTS_features`, donde `p_grad_excess := p_grad − p_stat`. → `β(p_grad_excess)` = **β_piso bruto** (contiene A + B). Se usa el exceso porque `p_grad` crudo contiene la componente estacionaria `p_stat(H)` que el no-tracker usa legítimamente; sin restarla, el coeficiente atribuiría al tracking la respuesta a `H/N`.
+2. **Control oráculo (aísla A):** `action ~ p_grad_excess + f(board_full)` con control rico del tablero verdadero. Si `β(p_grad_excess)` cae a ≈0 aquí, se confirma que el residuo del modelo (1) era **insuficiencia de featurización** (confound A). El gap `β(1) − β(2)` cuantifica A.
+3. **Sin survivorship (aísla B):** repetir el modelo (1) pero (a) restringido a estados de bajo H no censurados, (b) con IPW por supervivencia, o (c) —**diagnóstico decisivo**— desactivando la censura para que se logueen todas las decisiones, no solo las de trayectorias sobrevivientes. La diferencia con (1) cuantifica B. (Nota: un IPW de un solo paso sub-corrige un colisionador secuencial; el diagnóstico más limpio es la comparación censura-activada vs censura-desactivada.)
 
-Usar `p_grad` continuo como regresor (no `I∈S` binario): la binarización tira la estructura graduada del landscape y pierde potencia. Reportar también la versión binaria solo para comparabilidad con el prototipo previo.
+Usar `p_grad_excess` continuo como regresor principal. Reportar también la versión binaria `I∈S` y la versión con `p_grad` crudo solo para comparabilidad con el prototipo previo.
 
 ### 5.3. Descomposición entregable
 
 ```
-β_piso_bruto      = β del modelo (1)        [A + B juntos]
-contrib_A         = β(1) − β(2)             [insuficiencia de featurización]
-contrib_B         = β(1) − β(3)             [survivorship]
+β_piso_bruto      = β(p_grad_excess) del modelo (1)   [A + B juntos]
+contrib_A         = β(1) − β(2)                        [insuficiencia de featurización]
+contrib_B         = β(1) − β(3)                        [survivorship]
 ```
 (La descomposición no es exactamente aditiva si A y B interactúan; reportar las tres cantidades y señalar si `contrib_A + contrib_B` se aparta de `β(1)`, lo que indicaría interacción.)
 
@@ -179,7 +179,11 @@ Sea `Δ_humano_esp` el efecto humano esperado. [INFERENCIA, prior heredado: el s
 
 - **Rama 1 — piso limpio.** Si el IC de `β_piso_bruto` incluye 0 (o `|β_piso| < ε`, `ε` pequeño [PARÁMETRO, p.ej. 0.02]): el estimador es robusto a los confounds. → Se **gana el derecho** a calcular potencia contra cero. Registrar explícitamente que la crítica de confound se desinfla en este sustrato.
 - **Rama 2 — piso moderado.** Si `β_piso` es positivo pero claramente `< Δ_humano_esp` (p.ej. 0.03–0.08): el humano debe **exceder el piso**, no el cero. → La potencia se recalcula contra el piso. La descomposición A/B dice qué atacar (más features ⇒ baja A; restringir a estados backdoor-cerrados ⇒ baja B).
-- **Rama 3 — piso fatal.** Si `β_piso` se aproxima o supera `Δ_humano_esp`: el test estructural **en su forma actual no separa tracking de confound**. → Rediseño antes de cualquier recolección: (a) restringir el test a estados donde la puerta trasera esté **cerrada por construcción** (p.ej. controlar la historia de la bolsa explícitamente, o usar solo transiciones donde `I∈S` no covaría con el perfil de tablero observado); y/o (b) añadir features hasta que el piso baje — que es **el criterio de suficiencia descriptiva aplicado a un objetivo medible** (no "¿rankea bien?", sino "¿el piso cae a 0?").
+- **Rama 3 — piso fatal.** Si `β_piso` se aproxima o supera `Δ_humano_esp`: el test estructural **en su forma actual no separa tracking de confound**. → Rediseño antes de cualquier recolección. **El remedio depende de qué confound domina, y los dos NO se arreglan igual:**
+  - **Si domina A (featurización / historia, backdoor):** añadir features del tablero hasta que el piso baje — criterio de suficiencia descriptiva aplicado a un objetivo medible ("¿el piso cae a 0?"). Esto **solo** es válido para A.
+  - **Si domina B (survivorship / colisionador):** **añadir features NO sirve y empeora** — el sesgo de colisionador viene de condicionar en la muestra seleccionada por supervivencia, no de una variable omitida; no se cierra con covariables. El único remedio es **romper la selección por diseño**: presentar estados (H, `S_t`) **impuestos exógenamente** por el experimentador (escenarios de pozo forzados), independientes de la supervivencia, en vez de extraerlos de partidas alcanzadas naturalmente. Esto convierte 1A de logging-naturalista a probe-controlado.
+  - **Diagnóstico para saber cuál domina:** re-correr midiendo `β_piso` (i) con censura activada (muestra observada) vs (ii) con censura desactivada / estados exógenos. Si `β_piso → 0` al quitar la censura, el piso es B (colisionador) y el remedio es presentación exógena, no features. [Verificado en toy: sin censura β≈0; con censura β grande y significativo, sin que el agente use `S_t`.]
+  - **Advertencia de colocalización:** si la señal de tracking vive en la misma región (H alto) que la selección de survivorship, señal y colisionador están colocalizados y **ningún análisis** los separa en juego libre — solo la presentación exógena. Es el colisionador que contaminó las fases tardías de PUBG (HANDOFF §1).
 
 **Bloqueo:** el cálculo de potencia (§9) no se ejecuta hasta que este resultado seleccione Rama 1 o 2. Si selecciona Rama 3, el siguiente paso es rediseño, no potencia.
 
@@ -217,10 +221,10 @@ pip install numpy scipy pandas statsmodels matplotlib pyarrow
 git rev-parse HEAD | Out-File -Encoding utf8 .\out\git_hash.txt
 
 # ejecutar
-python confound_floor.py --seed 42 --n_games 5000 --tau 0.5 --out .\out
+python confound_floor.py --seed 42 --n_games 5000 --tau 1.0 --out .\out
 ```
 
-Script único `confound_floor.py` con CLI: `--seed`, `--n_games`, `--tau`, `--out`, y los [PARÁMETRO] de utilidad (`--v_tetris`, `--c_topar`, `--v_estable`). `N(H)` se computa internamente bajo π_fill (no hay flag `--eta`). Determinista dado `seed`.
+Script único `confound_floor.py` con CLI: `--seed`, `--n_games`, `--tau`, `--out`, `--no_censorship`, y los [PARÁMETRO] de utilidad (`--v_tetris`, `--c_topar`, `--v_estable`). `N(H)` se computa internamente bajo π_fill (no hay flag `--eta`). Determinista dado `seed`.
 
 Si `Activate.ps1` falla por execution policy:
 ```powershell
