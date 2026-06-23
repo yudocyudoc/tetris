@@ -5,6 +5,9 @@
 data/
 data_test/
 
+# Salidas de análisis confound_floor
+analysis/confound_floor/out/
+
 # Python cache
 __pycache__/
 *.py[cod]
