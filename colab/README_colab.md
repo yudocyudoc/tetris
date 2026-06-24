@@ -3,12 +3,13 @@
 Este directorio contiene un notebook de Google Colab para replicar el análisis de
 potencia de Fase 1A en un entorno con más recursos que la máquina local.
 
+Repo: `https://github.com/yudocyudoc/tetris.git`
+
 ## Antes de usar
 
-1. Sube este proyecto a un repositorio de GitHub (público o privado).
-2. Abre `tetris_confound_colab.ipynb` en Colab.
-3. En la celda de configuración, reemplaza `REPO_URL` por la URL de tu repo.
-4. Si usas Colab Pro, activa un runtime de mayor capacidad (Runtime → Change runtime type → GPU o T4/CPU de alto rendimiento). El código es CPU-bound, pero un runtime más potente acelera las simulaciones.
+1. Abre `tetris_confound_colab.ipynb` en Colab.
+2. La celda de configuración ya apunta al repo.
+3. Si usas Colab Pro, activa un runtime de mayor capacidad (Runtime → Change runtime type → CPU de alto rendimiento). El código es CPU-bound, pero un runtime más potente acelera las simulaciones.
 
 ## Qué hace el notebook
 
@@ -26,7 +27,7 @@ potencia de Fase 1A en un entorno con más recursos que la máquina local.
 - Cuatro valores de `tracker_prob`: ~20–60 min.
 - Análisis de potencia y calibración: ~5 min.
 
-Si el tiempo es crítico, reduce `n_games` a 50 en la celda de configuración.
+Si el tiempo es crítico, reduce `N_GAMES` a 50 en la celda de configuración.
 
 ## Salidas
 
