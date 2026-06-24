@@ -931,6 +931,8 @@ def parse_args() -> argparse.Namespace:
                         help="Barrer k=3,5,7 y reportar sensibilidad")
     parser.add_argument("--compare_with", type=str, default=None,
                         help="Directorio de la corrida censurada de referencia para figura de desacople")
+    parser.add_argument("--n_workers", type=int, default=None,
+                        help="Número de workers para ProcessPoolExecutor (default: min(cpu_count,8))")
     return parser.parse_args()
 
 
@@ -957,7 +959,8 @@ def main_single_run(args: argparse.Namespace, out_dir: Path) -> Dict:
     for k in ks:
         print(f"[k={k}] Simulando {args.n_games} partidas...")
         all_decisions = []
-        n_workers = min(os.cpu_count() or 1, 8)
+        n_workers = args.n_workers if args.n_workers is not None else min(os.cpu_count() or 1, 8)
+        print(f"    Usando {n_workers} worker(s) paralelo(s)")
         arg_tuples = [
             (
                 int(args.seed + g),
