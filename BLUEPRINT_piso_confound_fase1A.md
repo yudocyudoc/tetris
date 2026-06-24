@@ -7,56 +7,36 @@
 
 ---
 
-## 0. Estado heredado (autocontenido — qué quedó cerrado antes de este blueprint)
+## 0. Estado heredado (autocontenido)
 
-Para que CC no tenga que reconstruir el hilo:
-
-- [DECISIÓN] La observable central es **anticipación-como-modelado-del-bag**, operacionalizada sobre la primera pieza **oculta**. Con preview=1, esa es **t+2** (t+1 es visible → leerla es reacción al preview, no modelado).
-- [HECHO] **La anticipación puntual de t+2 es degenerada** bajo 7-bag + preview=1: el orden del tramo no visto es información que el sustrato no contiene. Permutar t+2 dentro del conjunto restante no cambia su distribución. La única anticipación posible es **distribucional**: trackear el agotamiento de la bolsa afila la distribución sobre el conjunto restante `S_t`, aunque la identidad de t+2 siga siendo unpredecible.
-- [DECISIÓN] El **conocimiento estático** ("el juego es 7-bag") no es agencia. El **acto vivo** (trackear qué queda en *esta* bolsa y condicionar la colocación en `S_t`) sí lo es. El test debe aislar lo segundo.
-- [DECISIÓN] Operacionalización limpia, **no circular**: ¿la colocación depende de `S_t` dado (board, P_t, P_{t+1})? Es un test de independencia condicional / inclusión de variable sobre datos reales, **no** un contrafactual generativo de agente (por eso no hereda la circularidad del null-ablación).
-- [DECISIÓN] Instrumento de Fase 1A = **test estructural en la familia well-building** (gestión de pozo de 4 para la pieza I).
-- [HECHO, del prototipo previo] El ground truth es **graduado, no binario**. El predictor correcto no es "I ∈ S_t" sino la probabilidad graduada `P(I llega antes de topar | S_t, H)` bajo orden uniforme del tramo no visto. → el test es **regresión**, no comparación de tasas.
-- [DECISIÓN — corrección de skill-leakage] El ground truth de 1A se calcula con `H` y geometría del pozo **sin gravedad**. La gravedad modula el *logro* del óptimo (skill), no *qué es* óptimo; entra en 1B (Programa C), no aquí.
-- [DECISIÓN] Optimalidad = comparación de **dos brazos**: *dejar* el pozo (apostar a la I) vs *cerrarlo* (seguridad). El umbral sale del **margen de utilidad** entre brazos, no del nivel de uno solo.
-- [HECHO] La prueba de separación sintética **pasó su versión débil**: la regresión recupera la dependencia en `S_t` que se construyó en el tracker y no alucina una donde se quitó (no-tracker, β≈0).
-
-### Lo que ese β≈0 **no** demostró (la razón de este blueprint)
-
-El no-tracker del prototipo previo condicionaba en exactamente el mismo conjunto que la regresión controla → la independencia condicional era **por construcción**, no ganada. En datos reales el condicionamiento perceptual del humano es desconocido y casi con certeza ≠ al vector de features de la regresión. Hay **dos confounds** que el sintético previo no podía ver porque [INFERENCIA, a confirmar en §2.1] generó estados *muestreando* `(H, m, I∈S)` en vez de simular partidas reales:
-
-- **Confound A — endogeneidad de `I∈S_t` respecto al tablero.** `I∈S_t` y `board_t` comparten causa común (la secuencia de piezas): puerta trasera `I∈S ← secuencia → board`. `I∉S_t` implica que la I ya salió en esta bolsa (probablemente se usó, probablemente el tablero cambió). Condicionar en una representación **incompleta** del tablero deja la puerta abierta → un agente que **no trackea** exhibe β≠0 por residuo de historia no capturado. Es el problema de **suficiencia de la featurización** mordiendo sobre un objetivo medible.
-- **Confound B — survivorship en la zona de máxima señal (H alto).** A H alto solo se observan estados donde el jugador **sobrevivió**. "Dejar pozo a H alto sin que llegue la I → topa → no se observa." La censura correlaciona con `I∈S` (si I∈S, dejar sobrevive más → se observa más): **colisionador** que infla β bajo el null sin tracking alguno. Es el mismo collider que contaminó las fases tardías de PUBG, y cae exactamente en H=12–17, la zona objetivo.
-
-Ambos empujan β>0 bajo el null de no-tracking en datos reales. Por tanto **el β humano no compite contra 0; compite contra un piso de confound desconocido y plausiblemente positivo**. Medir ese piso es la compuerta.
+- [DECISIÓN] La observable central es **anticipación-como-modelado-del-bag**, operacionalizada sobre la primera pieza oculta. Con preview=1, esa es **t+2** (t+1 es visible → leerla es reacción al preview, no modelado).
+- [HECHO] La anticipación puntual de t+2 es **distribucional**: trackear el agotamiento de la bolsa afila la distribución sobre el conjunto restante `S_t`, aunque la identidad de t+2 siga siendo unpredecible.
+- [DECISIÓN] El conocimiento estático ("el juego es 7-bag") no es agencia. El **acto vivo** (trackear qué queda en *esta* bolsa y condicionar la colocación en `S_t`) sí lo es.
+- [DECISIÓN] Operacionalización limpia: ¿la colocación de `P_t` depende de `S_t` dado `(board_t, P_t, P_{t+1})`? Es un test de independencia condicional sobre datos reales.
+- [DECISIÓN — evolución del diseño] El **instrumento inicial de Fase 1A fue well-building** (gestión de pozo de I). Se descartó como familia principal porque en esa familia el horizonte de decisión está fijado por la capacidad-hasta-topar: horizonte corto = H alto = cerca de muerte = **colisionador de survivorship**. La señal y el colisionador están colocalizados. El remedio correcto es cambiar el horizonte, no añadir features.
+- [DECISIÓN] El instrumento corregido es **acomodación a t+2 en partidas naturales a H moderado**: el horizonte está fijado por preview=1, no por supervivencia, diseñando el colisionador fuera por construcción.
 
 ---
 
 ## 1. Objetivo único
 
-Medir **β_piso**: el coeficiente de la dependencia colocación↔`S_t` que produce un **no-tracker** (que por construcción ignora el bag) cuando se le aplica el estimador de Fase 1A sobre datos sintéticos que **sí contienen** los dos confounds (historia real de partida + censura por topar).
+Medir **β_piso**: el coeficiente de la dependencia colocación↔`S_t` que produce un **no-tracker** (que por construcción ignora el bag) cuando se le aplica el estimador de Fase 1A sobre datos sintéticos que sí contienen confound A (historia real de partida) pero **no** confound B (H moderado + censura desactivada o, si se activa, no afecta porque no hay selección por supervivencia).
 
-Y **descomponerlo** en su parte A (insuficiencia de featurización) y su parte B (survivorship), porque el remedio difiere.
-
-Resultado entregable: un número (β_piso) con intervalo de confianza, su descomposición A/B, y la rama de decisión que dispara (§6).
+Resultado entregable: un número (β_piso) con intervalo de confianza, una prueba de desacople censura on/off, y la rama de decisión que dispara (§6).
 
 ---
 
-## 2. Qué se corrige respecto al prototipo previo
+## 2. Qué se corrige respecto al prototipo previo (well-building)
 
-### 2.1. Verificación previa (CC debe reportar antes de codificar lo nuevo)
-
-Inspeccionar el script del prototipo de separación previo y reportar **cómo generó los estados**: ¿muestreó `(H, m, I∈S)` de forma independiente, o simuló partidas 7-bag con historia? Esto confirma o refuta la sospecha de que los confounds estaban ausentes por construcción. Es un dato, no un reproche; condiciona la interpretación de que "el estimador funciona".
-
-### 2.2. Las tres diferencias estructurales
-
-| Aspecto | Prototipo previo | Este blueprint |
+| Aspecto | Prototipo well-building | Este blueprint |
 |---|---|---|
-| Generación de estados | [INFERENCIA] muestreo de `(H,m,I∈S)` | **Partidas 7-bag reales simuladas**, con historia de piezas |
-| Muerte / censura | Ausente | **Presente** (topar elimina trayectorias) |
-| No-tracker | Condiciona en el mismo conjunto que controla la regresión | Condiciona en el **tablero completo verdadero**, con **más** información de tablero de la que la regresión puede controlar |
+| Horizonte de decisión | Capacidad-hasta-topar (`N(H)`) | Preview fijado (`t+2`) |
+| Confound B (survivorship) | Presente y fatal a H alto | Ausente por diseño a H moderado |
+| Familia de estados | Pozo de I artificial | Partidas naturales, H moderado |
+| Estimador | Logit binario leave/close | Conditional logit sobre colocaciones |
+| Predictor | `p_grad_excess = P(I llega) − p_stat(H)` | `p_grad_excess = P(t+2 favorable \| S_t, clase) − P(t+2 favorable \| clase)` |
 
-La tercera es la clave: si el no-tracker no tiene más información de tablero que la regresión, el confound A no puede manifestarse y el test vuelve a ser tautológico.
+La lección de la ronda anterior: el piso de well-building no era un defecto de featurización; era un **colisionador de survivorship**. Añadir features no lo habría cerrado. El remedio es re-anclar en un horizonte fijado por preview.
 
 ---
 
@@ -64,197 +44,311 @@ La tercera es la clave: si el no-tracker no tiene más información de tablero q
 
 ### 3.1. Campo y generador
 
-- Tablero **10 columnas × 20 filas** (visibles). [PARÁMETRO si la geometría real difiere.]
-- Generador **7-bag** con semilla fija. Registrar `seed`. La misma semilla alimenta tracker y no-tracker (campo idéntico).
-- **Preview = 1** (visible: pieza actual + 1).
-- **Sin gravedad en la dinámica de decisión.** El simulador coloca piezas instantáneamente; el tiempo no entra. (La gravedad es 1B.)
+- Tablero **10 columnas × 20 filas**.
+- Generador **7-bag** con semilla fija.
+- **Preview = 1** (visible: pieza actual `P_t` + `P_{t+1}`).
+- Sin gravedad en la dinámica de decisión (colocaciones instantáneas).
 
-### 3.2. Escenario well-building (el dominio del test)
+### 3.2. Escenario: partidas naturales a H moderado
 
-Estado bien-formado: **9 columnas construidas a altura H**, **1 columna-pozo** vacía de profundidad ≥4 (lista para un I vertical que limpia 4 líneas). [PARÁMETRO: posición de la columna-pozo; default = borde, columna 0 o 9.]
+- El agente base (bag-ciego) juega partidas completas desde tablero vacío usando una política de relleno `π_fill` determinista.
+- Se loguean decisiones donde el stack height `H` está en `[H_min, H_max]` (default `[4, 8]`). H moderado evita survivorship y mantiene tableros featurizables.
+- Para cada decisión logueada se construye el **conjunto de consideración**: las `k` mejores colocaciones de `P_t` según `π_fill` base (default `k=5`).
+- Cada colocación produce un `board_resultante`.
 
-En cada spawn dentro de este escenario, el agente decide entre **dos brazos**:
-- **Dejar:** colocar la pieza actual (no-I) en las 9 columnas, preservando el pozo, apostando a que la I llegue.
-- **Cerrar:** colocar la pieza actual tapando/rellenando hacia el pozo, renunciando al tetris pero estabilizando.
+### 3.3. Clase de favorabilidad rica (local)
 
-### 3.2.1. π_fill — política de relleno (nuisance compartida, NO la política bajo test)
+Para cada `board_resultante`, se define una **clase** que resume su compatibilidad con los 7 tipos de pieza posibles en `t+2`:
+- Un tipo "encaja limpio" si existe al menos una colocación legal en el `board_resultante` que no aumente el número de huecos.
+- `clase = (count, compatible_pieces)`, donde `count ∈ {0,...,7}`.
 
-Separar dos políticas que están acopladas pero son distintas:
+La clase es **determinista dado `(board_t, acción)`**; no depende de `S_t`. Es una featurización local del tablero resultante (no una función de valor global).
 
-- **π_fill (relleno):** dónde colocar una pieza no-I en las 9 columnas. **Fija, determinista, compartida idéntica por tracker y no-tracker, bag-ciega.** Condiciona en el **vector completo de alturas de columna + mapa de huecos** (no en agregados). Define `N(H)` (§3.3). Es nuisance: debe ser la misma para ambos agentes o la diferencia de `N` contamina el contraste, y debe ser bag-ciega o la ventaja del tracker se filtra al relleno en vez de quedar localizada en la decisión bajo test.
-- **Decisión deja/cerra (bajo test):** dónde tracker y no-tracker difieren, vía `p_grad` vs `p_stat` (§4). Es lo único que el experimento interroga.
+### 3.4. Distribución de t+2
 
-Que π_fill condicione en el **perfil completo** (no en BCTS agregado) es lo que abre el canal del confound A: el micro-patrón de superficie lleva traza de las piezas recientes → correlaciona con `S_t` → y la regresión, que solo controla agregados BCTS, no puede bloquearlo del todo. Si π_fill usara solo `agg_height`/`bumpiness` (ambos en BCTS), el canal se cierra y el piso saldría ≈0 trivialmente.
+Dado `S_t` (piezas no vistas de la bolsa actual) y `P_{t+1}` (preview):
+- Si `P_{t+1}` no es la última pieza del bag: `t+2` es uniforme sobre `S_t \ {P_{t+1}}`.
+- Si `P_{t+1}` es la última del bag: `t+2` proviene del siguiente bag → uniforme sobre las 7 piezas.
 
-### 3.3. `N(H)` — horizonte de supervivencia, **sin gravedad** [PARÁMETRO de forma, invariante de contenido]
+### 3.5. Predictor graduado
 
-`N(H)` = número de piezas no-I que caben en las 9 columnas antes de que estas topen (fila 20), bajo la **política de relleno π_fill** (§3.2.1).
+Definimos "favorable" como "`t+2` pertenece al conjunto de tipos compatibles con el `board_resultante`".
 
-- **Invariante no negociable:** `N` es función de `H` y la geometría del pozo **únicamente**. **No** contiene término de gravedad. Si CC introduce gravedad en `N`, está reintroduciendo el skill-leakage que este diseño corrige.
-- **`N(H)` se computa empíricamente, no por fórmula cerrada.** Simular π_fill desde altura `H` con piezas no-I del bag hasta topar; contar piezas colocadas. **Requisito de consistencia (crítico):** la política que define `N(H)` y la política con que el agente realmente rellena al elegir "dejar" **deben ser la misma π_fill**. Si difieren, `p_grad` se calcula sobre un horizonte que el agente no realiza y el ground truth queda descalibrado.
-- `N(H)` bajo π_fill es **estocástico** (la secuencia de relleno viene del bag). Usar `E[N | H]` como escalar es aproximación de primer orden aceptable para esta corrida; el acoplamiento secuencia-de-relleno ↔ llegada-de-I (mismo bag) queda como supuesto a revisar (§10.6), no enterrado.
-- CC debe **reportar la curva `E[N|H]`** y su dispersión.
+- `p_stat_clase = P(t+2 favorable | clase) = count / 7` (marginal 7-bag).
+- `p_tracker_clase = P(t+2 favorable | S_t, clase) = Σ_{x ∈ compatible} P(t+2 = x | S_t, P_{t+1})`.
+- `p_grad_excess = p_tracker_clase − p_stat_clase`.
 
-### 3.4. Modelo de llegada de la I (predictor graduado) [HECHO — del prototipo]
+`p_grad_excess` es el regresor del estimador de Fase 1A. El no-tracker, por construcción, no usa `S_t`; por tanto cualquier correlación entre su elección y `p_grad_excess` es piso.
 
-Bajo orden uniforme del tramo no visto, con `m = |S_t|` (piezas no vistas en la bolsa actual):
+### 3.6. Censura (diagnóstico de desacople)
 
-- Si **I ∈ S_t**: `P(I dentro de N piezas) = min(N / m, 1)`
-- Si **I ∉ S_t**: `P(I dentro de N piezas) = clamp( (N − m) / 7, 0, 1 )`
+El simulador permite `--no_censorship`. Cuando está activada, si el agente base no puede colocar una pieza, el tablero se reinicia y la secuencia continúa. A H moderado, la predicción es que **censura on/off no debe mover β_piso**: si lo hace, el argumento de desacople falla.
 
-Este es el **predictor graduado** `p_grad := P(I llega antes de topar | S_t, H)`. Es continuo y es el regresor correcto (§5), no su binarización `I∈S`.
+### 3.7. Telemetría
 
-### 3.5. Censura (confound B, obligatoria)
-
-El simulador corre **trayectorias secuenciales**, no decisiones one-shot. Reglas:
-- Una decisión "dejar" a H alto sin que la I llegue dentro de `N` → el stack topa → **game over**; los estados posteriores de esa trayectoria **no se loguean**.
-- Solo se loguean decisiones en estados **alcanzados con vida** (survived-to-here).
-- Esto reproduce el colisionador: el muestreo a H alto queda enriquecido por `I∈S` entre quienes eligieron "dejar".
-
-### 3.6. Telemetría por decisión (una fila por punto de decisión observado)
-
-Columnas mínimas:
-`game_id, piece_idx, H, m, S_t (conjunto), I_in_S (bool), p_grad, action (deja=1/cerra=0), board_full (estado completo verdadero), survived_next (bool), agent_type (tracker/no_tracker), seed, software_git_hash`
+Una fila por alternativa por decisión por agente, en formato largo para conditional logit:
+`game_id, decision_id, agent_type, chosen, piece, next_piece, S_t, H, alternative_id, base_val, compatible_count, p_stat_clase, p_tracker_clase, p_grad_excess, res_* (features del board_resultante)`.
 
 ---
 
 ## 4. Los dos agentes sintéticos
 
-**Principio rector:** tracker y no-tracker son **la misma política en todo** (mismo π_fill, mismo brazo de utilidad, mismo ruido `τ`), y difieren **solo** en la fuente de creencia sobre la llegada de la I. Cualquier otra diferencia rompe la atribución: un β distinto podría venir de esa otra diferencia, no del tracking.
+**Principio rector:** tracker y no-tracker comparten `π_fill` base y el mismo ruido; solo difieren en la fuente de creencia sobre `t+2`.
 
-### 4.1. Tracker (control positivo)
+### 4.1. Agente base / no-tracker
 
-Decide por el **margen de utilidad de los dos brazos**, condicionando en `S_t` verdadero:
-- `U_dejar = p_grad · V_tetris − (1 − p_grad) · C_topar`
-- `U_cerrar = V_estable`
-- `p_grad = p_grad(S_t, H)` (§3.4): depende de `S_t` vía `m` e `I∈S`.
-- Acción = `dejar` si `U_dejar > U_cerrar`, con ruido logit (temperatura `τ`) para que la frontera no sea un escalón. [PARÁMETRO: `V_tetris, C_topar, V_estable, τ`.]
+- Elige dentro del conjunto de consideración maximizando una utilidad logística:
+  `U_j = −board_value_weight · base_val_j + tau · p_stat_clase_j + ε_j`.
+- `ε_j` i.i.d. tipo I (softmax).
+- No usa `S_t`.
 
-El tracker **debe** producir señal (control positivo). Si no, hay bug.
+### 4.2. Tracker (control positivo)
 
-### 4.2. No-tracker (el que mide el piso — el agente crítico)
-
-Idéntico al tracker salvo un cambio, y un requisito:
-
-- **Cambio único:** sustituir `p_grad(S_t, H)` por `p_stat(H) = min(N/7, 1)` — creencia **estacionaria** del 7-bag, **independiente de `S_t`** (la I tratada como uniforme en la ventana de 7, sin agotamiento de *esta* bolsa). Todo lo demás (π_fill, utilidades, `τ`) es **el mismo** que el tracker.
-  - **Por qué `min(N/7,1)` y no `1−(6/7)^N` — no es elección libre.** `min(N/7,1)` modela un agente que **sabe que el juego es 7-bag** (la I aparece una vez cada 7) pero **no trackea esta bolsa**. `1−(6/7)^N` modela un agente que trata las piezas como iid uniforme y **ni siquiera sabe que es 7-bag**. El segundo es un null **mal especificado**: en §0 se decidió que el conocimiento estático "es 7-bag" **no es agencia** y el null no debe acreditarlo. Usar `1−(6/7)^N` le quita al no-tracker ese saber estático, así que la diferencia tracker−no-tracker mezclaría *tracking vivo* con *saber que existe la estructura de bolsa* — y contaría lo segundo como anticipación, sobreestimando todo. El null correcto es el que ya posee el saber estático y solo carece del tracking vivo: **`min(N/7,1)`**.
-- **Requisito para que el test pueda fallar:** el no-tracker (vía π_fill) condiciona en el **vector completo de alturas + huecos** (`board_full`), que es **más rico** que el resumen BCTS que la regresión controlará (§5). Ese gap es el canal del confound A. Si el no-tracker decidiera como función solo de `H` (que está en BCTS), no habría fuga y el piso saldría ≈0 por construcción — repitiendo el error del prototipo previo. **Esto NO es "BCTS sin bag features": esa opción cierra el canal y vuelve el test tautológico.**
-- El no-tracker **no depende de `S_t`** en absoluto. Por tanto cualquier `β ≠ 0` que la regresión le estime sobre `p_grad`/`I∈S` es **piso de confound** (historia + survivorship), no tracking. Ese es el número que se mide.
+- Idéntico al no-tracker salvo que usa `p_tracker_clase_j` en lugar de `p_stat_clase_j`:
+  `U_j = −board_value_weight · base_val_j + tau · p_tracker_clase_j + ε_j`.
+- Debe producir señal sobre `p_grad_excess`.
 
 ---
 
 ## 5. Estimador y medición del piso
 
-### 5.1. Features de control (deliberadamente incompletas — BCTS)
+### 5.1. Modelo: conditional logit
 
-Vector de features del tablero que la regresión controla (de Şimşek / BCTS):
-`agg_height, n_holes, bumpiness, well_depth, landing_height, row_transitions, col_transitions`
+Datos en formato largo: cada alternativa del conjunto de consideración es una fila; `chosen ∈ {0,1}`. El modelo es:
 
-Son un resumen **lossy** de `board_full`. La distancia entre este vector y `board_full` es exactamente lo que el confound A explota.
+`P(alternativa j es elegida | decisión i) = exp(x_{ij}'β) / Σ_{j'} exp(x_{ij'}'β)`.
 
-### 5.2. Modelos de regresión (logística; respuesta = `action`)
+### 5.2. Features
 
-Correr **sobre datos del no-tracker** (y replicar en tracker como contraste):
+- **Predictor:** `p_grad_excess`.
+- **Control de geometría resultante (bruto):** `p_stat_clase`.
+- **Control oráculo (L2):** `base_val`, `p_stat_clase`, y features del `board_resultante`: `res_n_holes`, `res_bumpiness`, `res_full_h_max`, `res_full_h_std`, `res_full_h_var`, perfil completo de alturas por columna, y huecos por columna. La penalización L2 estabiliza la inversión con muchas features colineales.
 
-1. **Piso bruto:** `action ~ p_grad_excess + BCTS_features`, donde `p_grad_excess := p_grad − p_stat`. → `β(p_grad_excess)` = **β_piso bruto** (contiene A + B). Se usa el exceso porque `p_grad` crudo contiene la componente estacionaria `p_stat(H)` que el no-tracker usa legítimamente; sin restarla, el coeficiente atribuiría al tracking la respuesta a `H/N`.
-2. **Control oráculo (aísla A):** `action ~ p_grad_excess + f(board_full)` con control rico del tablero verdadero. Si `β(p_grad_excess)` cae a ≈0 aquí, se confirma que el residuo del modelo (1) era **insuficiencia de featurización** (confound A). El gap `β(1) − β(2)` cuantifica A.
-3. **Sin survivorship (aísla B):** repetir el modelo (1) pero (a) restringido a estados de bajo H no censurados, (b) con IPW por supervivencia, o (c) —**diagnóstico decisivo**— desactivando la censura para que se logueen todas las decisiones, no solo las de trayectorias sobrevivientes. La diferencia con (1) cuantifica B. (Nota: un IPW de un solo paso sub-corrige un colisionador secuencial; el diagnóstico más limpio es la comparación censura-activada vs censura-desactivada.)
+### 5.3. Modelos a correr
 
-Usar `p_grad_excess` continuo como regresor principal. Reportar también la versión binaria `I∈S` y la versión con `p_grad` crudo solo para comparabilidad con el prototipo previo.
+Sobre cada agente:
+1. **Bruto:** `chosen ~ p_grad_excess + p_stat_clase`.
+2. **Oráculo L2:** `chosen ~ p_grad_excess + p_stat_clase + controles_ricos`.
 
-### 5.3. Descomposición entregable
-
-```
-β_piso_bruto      = β(p_grad_excess) del modelo (1)   [A + B juntos]
-contrib_A         = β(1) − β(2)                        [insuficiencia de featurización]
-contrib_B         = β(1) − β(3)                        [survivorship]
-```
-(La descomposición no es exactamente aditiva si A y B interactúan; reportar las tres cantidades y señalar si `contrib_A + contrib_B` se aparta de `β(1)`, lo que indicaría interacción.)
+El **piso** es `β(p_grad_excess)` del no-tracker en el modelo oráculo. Si es ≈0, el confound A es absorbido por la featurización del tablero resultante.
 
 ---
 
 ## 6. Regla de decisión sobre el piso
 
-Sea `Δ_humano_esp` el efecto humano esperado. [INFERENCIA, prior heredado: el sintético del tracker dio Δ≈0.26; en humanos, probablemente la mitad, ~0.13, por ruido motor/fatiga/skill imperfecto. Es prior, no medición — tratar como parámetro, no como dato.]
+Sea `Δ_tracker` el β del tracker **imperfecto** (`tracker_prob < 1`) en el modelo bruto. [INFERENCIA] El efecto humano esperado es probablemente una fracción de `Δ_tracker`. **No usar** `tracker_prob=1.0` como ancla (ver §7.1).
 
-- **Rama 1 — piso limpio.** Si el IC de `β_piso_bruto` incluye 0 (o `|β_piso| < ε`, `ε` pequeño [PARÁMETRO, p.ej. 0.02]): el estimador es robusto a los confounds. → Se **gana el derecho** a calcular potencia contra cero. Registrar explícitamente que la crítica de confound se desinfla en este sustrato.
-- **Rama 2 — piso moderado.** Si `β_piso` es positivo pero claramente `< Δ_humano_esp` (p.ej. 0.03–0.08): el humano debe **exceder el piso**, no el cero. → La potencia se recalcula contra el piso. La descomposición A/B dice qué atacar (más features ⇒ baja A; restringir a estados backdoor-cerrados ⇒ baja B).
-- **Rama 3 — piso fatal.** Si `β_piso` se aproxima o supera `Δ_humano_esp`: el test estructural **en su forma actual no separa tracking de confound**. → Rediseño antes de cualquier recolección. **El remedio depende de qué confound domina, y los dos NO se arreglan igual:**
-  - **Si domina A (featurización / historia, backdoor):** añadir features del tablero hasta que el piso baje — criterio de suficiencia descriptiva aplicado a un objetivo medible ("¿el piso cae a 0?"). Esto **solo** es válido para A.
-  - **Si domina B (survivorship / colisionador):** **añadir features NO sirve y empeora** — el sesgo de colisionador viene de condicionar en la muestra seleccionada por supervivencia, no de una variable omitida; no se cierra con covariables. El único remedio es **romper la selección por diseño**: presentar estados (H, `S_t`) **impuestos exógenamente** por el experimentador (escenarios de pozo forzados), independientes de la supervivencia, en vez de extraerlos de partidas alcanzadas naturalmente. Esto convierte 1A de logging-naturalista a probe-controlado.
-  - **Diagnóstico para saber cuál domina:** re-correr midiendo `β_piso` (i) con censura activada (muestra observada) vs (ii) con censura desactivada / estados exógenos. Si `β_piso → 0` al quitar la censura, el piso es B (colisionador) y el remedio es presentación exógena, no features. [Verificado en toy: sin censura β≈0; con censura β grande y significativo, sin que el agente use `S_t`.]
-  - **Advertencia de colocalización:** si la señal de tracking vive en la misma región (H alto) que la selección de survivorship, señal y colisionador están colocalizados y **ningún análisis** los separa en juego libre — solo la presentación exógena. Es el colisionador que contaminó las fases tardías de PUBG (HANDOFF §1).
+- **Rama 1 — piso limpio.** Si el IC de `β_piso_oraculo` incluye 0 (o `|β_piso| < ε`): el estimador es robusto a confound A en este sustrato. → Se gana el derecho a calcular potencia contra cero.
+- **Rama 2 — piso moderado.** Si `β_piso` es positivo/negativo pero pequeño en valor relativo a `Δ_tracker` (p. ej. `|β_piso| < 0.10 · |Δ_tracker|`): el humano debe exceder el piso. → La potencia se recalcula contra el piso.
+- **Rama 3 — piso fatal.** Si `|β_piso|` se aproxima o supera `|Δ_tracker|`: el test no separa tracking de confound. → Rediseño.
 
-**Bloqueo:** el cálculo de potencia (§9) no se ejecuta hasta que este resultado seleccione Rama 1 o 2. Si selecciona Rama 3, el siguiente paso es rediseño, no potencia.
+### 6.1. Diagnóstico de desacople
+
+Correr el prototipo con y sin `--no_censorship`. Predicción: `β_piso_oraculo` no debe moverse. Si se mueve, confound B está vivo y el argumento de desacople es incorrecto.
 
 ---
 
-## 7. Salidas requeridas
+## 7. Resultados del prototipo
 
-En `.\out\`:
-1. `resultados_piso.json` — `β_piso_bruto` (+IC), `contrib_A`, `contrib_B`, `rama_disparada`, `N(H)` usada, todos los [PARÁMETRO], `seed`, `software_git_hash`, y el reporte de §2.1 (cómo generó estados el prototipo previo).
-2. `fig_piso_por_H.png` — `β_piso` (o señal `P(deja|I∈S)−P(deja|I∉S)`) del **no-tracker** por stack height, junto al del tracker en el mismo eje, para ver si el piso se concentra en H alto (firma de survivorship).
-3. `fig_descomposicion.png` — barras de `β(1)`, `β(2)`, `β(3)` lado a lado.
-4. `tabla_regresiones.csv` — coeficientes, t/z, p, R², N efectivo por modelo y por agente.
-5. `decisions_log.parquet` (o CSV) — telemetría cruda (§3.6) para auditoría.
+### 7.1. Advertencia sobre el tracker perfecto
 
-Cada figura con título que indique agente y qué confound aísla. Reportar **N de filas** efectivamente logueadas por agente (la censura reduce N — dato relevante para la potencia posterior).
+El primer tracker sintético (`tracker_prob=1.0`) decidía con `p_tracker_clase` y el estimador usaba `p_grad_excess = p_tracker_clase − p_stat_clase`. La correlación intra-decisión entre `p_grad_excess` y `p_tracker_clase` fue ~0.89, y el conditional logit recuperó β≈10. Ese número no es una señal empírica de "efecto detectable"; es una **tautología generación-estimación**: el predictor del estimador es casi la misma cantidad que generó la conducta del tracker. **No debe usarse como ancla de potencia humana.**
+
+Para obtener una ancla realista se introduce `tracker_prob < 1.0`: el tracker usa `S_t` solo en una fracción de las decisiones; en el resto usa la creencia estacionaria. Esto simula un tracking imperfecto, que es el caso humano.
+
+### 7.2. Distribución de stack height en juego natural
+
+Bajo `π_fill` base (100 partidas, 500 piezas o game over):
+- Mediana H = 8.
+- 50% de las decisiones: H ≤ 8.
+- 75% de las decisiones: H ≤ 14.
+- 90% de las decisiones: H ≤ 18.
+
+Por tanto, un test válido debe cubrir H = 4–15 (donde vive la mayoría del juego), no solo H = 4–8.
+
+### 7.3. Resultados finales (H=4–15, k=5, tau=10, tracker_prob=0.5, n_games=300)
+
+| Modelo | Agente | β sobre `p_grad_excess` | IC 95% | p-valor | Interpretación |
+|---|---|---|---|---|---|
+| Bruto | no-tracker | −0.13 | (−0.33, 0.08) | 0.23 | — |
+| **Oráculo L2** | **no-tracker** | **−0.05** | **—** | **0.64** | **Piso limpio global** |
+| Bruto | tracker imperfecto | 2.84 | (2.57, 3.11) | 3.0e-95 | Señal realista |
+| Oráculo L2 | tracker imperfecto | 3.24 | — | 4.8e-108 | Señal robusta |
+
+**Piso por bins de H (no-tracker oráculo L2, con IC 95%):**
+
+| H | n_decisiones | β | IC 95% | p |
+|---|---|---|---|---|
+| 4–6 | 8,001 | −0.00 | (−0.35, 0.34) | 0.99 |
+| 7–8 | 3,161 | −0.14 | (−0.66, 0.37) | 0.58 |
+| 9–10 | 2,421 | −0.24 | (−0.80, 0.33) | 0.41 |
+| 11–12 | 1,971 | −0.11 | (−0.74, 0.53) | 0.75 |
+| 13–15 | 2,453 | 0.24 | (−0.36, 0.84) | 0.43 |
+
+El piso es consistente con cero en todos los bins. El β=−1.43 observado en H=9–10 con n=50 fue fluctuación muestral; con n=300 converge a −0.24 y su IC incluye cero ampliamente.
+
+**Señal por bins de H (tracker imperfecto, bruto):**
+
+| H | β | IC 95% | p |
+|---|---|---|---|
+| 4–6 | 2.95 | (2.53, 3.37) | <1e-3 |
+| 7–8 | 2.88 | (2.24, 3.53) | <1e-3 |
+| 9–10 | 3.07 | (2.34, 3.80) | <1e-3 |
+| 11–12 | 2.21 | (1.50, 2.93) | <1e-3 |
+| 13–15 | 2.90 | (2.18, 3.61) | <1e-3 |
+
+**Test de desacople (n_games=50, H=4–8):**
+- Censura on: no-tracker oráculo β = −0.15, p = 0.74.
+- Censura off: no-tracker oráculo β = 0.08, p = 0.83.
+- **Censura no mueve el piso.** Confirma que no hay colisionador de survivorship a H moderado.
+
+**Rama disparada: 1 — piso limpio.** El piso es absorbido por la featurización del `board_resultante` en el rango de H realista.
 
 ---
 
-## 8. Estructura de archivos y comandos (PowerShell / Windows)
+## 8. Salidas requeridas
 
-Ubicación sugerida en el repo de Enrique: `analysis\confound_floor\`.
+En `analysis/confound_floor/out_t2/`:
+1. `resultados_piso_k{k}.json` — β bruto/oráculo por agente, p-valores, parámetros, diagnóstico de varianza intra-decisión, `rama_disparada`.
+2. `fig_desacople_censura.png` — comparación no-tracker oráculo censura on/off.
+3. `fig_piso_por_H.png` — piso vs señal por bins de H.
+4. `decisions_log_k{k}.parquet` — telemetría cruda.
+
+En `analysis/confound_floor/out_power_t2/` (posterior a §11):
+5. `bin_results.json` — β por bin, IC del piso, varianza intra-decisión, ratios empíricos.
+6. `power_curves.json` — curvas N(tracker_prob) por bin.
+7. `fig_power_curve_sessions.png` — figura con umbrales de factibilidad.
+8. `answer.txt` — respuesta explícita a la pregunta de factibilidad.
+
+En `analysis/confound_floor/out_fast_calibrate_v2/`:
+9. `fast_calibration_v2.json` — forma calibrada `β_señal(p) = β(0.5)·(p/0.5)^b` por bin.
+10. `fig_fast_calibration_v2.png` — curvas calibradas vs lineales.
+
+---
+
+## 9. Estructura de archivos y comandos
+
+Scripts: `analysis/confound_floor/confound_floor_t2.py` y `analysis/confound_floor/power_curve_t2.py`.
 
 ```powershell
-# desde la raíz del repo
 cd analysis\confound_floor
 
-# entorno aislado
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+# Corrida principal (tracker imperfecto, H realista)
+.venv\Scripts\python confound_floor_t2.py `
+  --n_games 50 --max_pieces 100 --tau 10 --H_max 15 --tracker_prob 0.5 --out out_t2
 
-# dependencias
-pip install numpy scipy pandas statsmodels matplotlib pyarrow
+# Diagnóstico de desacople
+.venv\Scripts\python confound_floor_t2.py `
+  --n_games 50 --max_pieces 100 --tau 10 --H_max 15 --tracker_prob 0.5 `
+  --no_censorship --out out_t2_nocensor
 
-# registrar hash del código (no negociable del programa)
-git rev-parse HEAD | Out-File -Encoding utf8 .\out\git_hash.txt
+# Curva de potencia (contra resultados de la corrida principal)
+.venv\Scripts\python power_curve_t2.py `
+  --results_dir out_t2_H15_n300_tp05_nocensor --out out_power_t2
 
-# ejecutar
-python confound_floor.py --seed 42 --n_games 5000 --tau 1.0 --out .\out
-```
+# Calibracion rapida de la forma de beta_señal(p) (proxy; no reemplaza simulaciones)
+.venv\Scripts\python fast_calibrate_signal_v2.py `
+  --log out_t2_H15_n300_tp05_nocensor/decisions_log_k5_sample20.parquet `
+  --real_results out_power_t2/bin_results.json --out out_fast_calibrate_v2
 
-Script único `confound_floor.py` con CLI: `--seed`, `--n_games`, `--tau`, `--out`, `--no_censorship`, y los [PARÁMETRO] de utilidad (`--v_tetris`, `--c_topar`, `--v_estable`). `N(H)` se computa internamente bajo π_fill (no hay flag `--eta`). Determinista dado `seed`.
-
-Si `Activate.ps1` falla por execution policy:
-```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+# Recalcular p_min con curva calibrada
+.venv\Scripts\python recalc_power_calibrated.py `
+  --bin_results out_power_t2/bin_results.json `
+  --calibration out_fast_calibrate_v2/fast_calibration_v2.json
 ```
 
 ---
 
-## 9. Qué NO hacer en este blueprint (bloqueado hasta §6 → Rama 1/2)
+## 10. Supuestos a vigilar
 
-- **No** calcular potencia. (Depende del piso; potencia contra null mal especificado no es informativa.)
-- **No** recolectar sesiones humanas ni añadir features al juego.
-- **No** enumerar los 10–20 estados críticos en detalle.
-- **No** reescribir el `MARCO`/`BLUEPRINT` general con la secuencia 1A/1B/1C/2 todavía (es consolidación correcta pero prematura hasta saber qué forma tiene 1A tras el piso).
-
-Cuando §6 dé Rama 1 o 2, el siguiente blueprint será **potencia con `N_eff` compuesto** = `N_total × P(t+2 no determinada por bolsa) × P(decisión sub-determinada por Şimşek)`, estratificada por zona de señal (H=12–17, m=3–5), asumiendo `Δ_humano_esp` pequeño, y midiendo contra el **piso**, no contra cero.
+1. **Rango de H validado.** El piso se midió en H=4–15 con n=300, cubriendo ≥75% de la distribución de stack height bajo `π_fill` base. El β=−1.43 observado en H=9–10 con n=50 fue fluctuación muestral; con n=300 converge a −0.24 (IC incluye cero). No extrapolar a H>15 sin nueva medición.
+2. **Función de favorabilidad local:** el criterio "no aumenta huecos" es una elección de diseño; otras definiciones de "limpia" cambiarían la clase pero no la lógica del test, siempre que sean locales y no dependan de `S_t`.
+3. **`k` del conjunto de consideración:** default `k=5`. Si el piso se moviera con `k`, la selección del choice set estaría introduciendo geometría no controlada; en los datos actuales no ocurrió.
+4. **Varianza intra-decisión de `p_stat_clase`:** ~6% de las decisiones tienen `p_stat_clase` constante entre alternativas; no impide la identificación pero limita la eficiencia del control en esas decisiones.
+5. **Tracker imperfecto como ancla de potencia humana.** `tracker_prob=0.5` es una primera aproximación; el valor humano real debe calibrarse con datos piloto. El punto crítico es que `tracker_prob=1.0` no es una ancla válida porque el predictor del estimador reproduce casi exactamente la cantidad que generó la conducta del tracker (tautología generación-estimación, β≈10).
 
 ---
 
-## 10. Supuestos a vigilar (CC debe exponerlos, no enterrarlos)
+## 11. Potencia: curva N vs `tracker_prob` y umbral de factibilidad
 
-1. **`N(H)` empírico** (§3.3): se computa por simulación de π_fill, no por fórmula cerrada. Reportar `E[N|H]` y su dispersión. El invariante (sin gravedad) se mantiene; la forma de la curva es resultado de π_fill, no un supuesto impuesto.
-2. **Utilidades de los brazos** (`V_tetris, C_topar, V_estable`): definen el umbral del tracker. Son [PARÁMETRO]; el resultado del piso **no debería** depender fuertemente de ellos (el piso lo produce el *no-tracker*, que no usa el margen para mirar `S_t`). Verificar esa insensibilidad como chequeo de sanidad.
-3. **Independencia ruido↔futuro** (supuesto de calibración del null): el ruido de ejecución/decisión debe ser ⊥ a las piezas futuras. Si el ruido del no-tracker covaría con el futuro, contamina el piso. Mantener el ruido del no-tracker explícitamente independiente de `S_t`.
-4. **`Δ_humano_esp`** (§6): es prior heredado (~0.13), no medición. La rama de decisión depende de él; declararlo como parámetro y, si se vuelve decisivo, marcar que la conclusión es condicional a ese prior.
-5. **Geometría de un solo pozo / un solo tipo de estado:** este test cubre la familia well-building/pozo-de-I. Es la más visible, no la única. Generalizar a otras familias es trabajo posterior; no sobre-interpretar un piso bajo en pozos como "no hay confound en ninguna familia".
-6. **`N(H)` escalar vs estocástico:** `N(H)` bajo π_fill es una distribución (las piezas de relleno vienen del bag), y el modelo `p_grad = min(N/m,1)` la colapsa a `E[N|H]`. Además, la secuencia de relleno y la llegada de la I comparten el mismo bag → están acopladas, y `p_grad` las trata como separables. Es aproximación de primer orden; si el piso resulta sensible a esta simplificación (chequeable variando cómo se resume `N`), hay que modelar `N` distribucional antes de la potencia.
+### 11.1. Metodología
+
+El piso entra como **intervalo**, no como punto. La separación efectiva en cada bin es:
+
+`δ(H, p) = β_señal(H, p) − CI_high_piso(H)`
+
+usando el extremo superior del IC del no-tracker oráculo (el piso más desfavorable porque reduce la señal). La señal se extrapola linealmente desde el ancla `tracker_prob=0.5`:
+
+`β_señal(H, p) = p · β_tracker_bruto(H, 0.5) / 0.5`.
+
+La potencia se calcula para conditional logit con información por decisión:
+
+`I_dec = ((k−1)/k) · σ²_intra(p_grad_excess)`,
+
+y se ajusta por la fracción de decisiones con varianza intra nula (`frac_zero_std`), que no aportan a la identificación. El N se traduce a sesiones humanas usando el ratio empírico `decisiones/partida` y un rango de `piezas/sesión` realista (100–470).
+
+### 11.2. Supuestos críticos (explícitos)
+
+1. **Extrapolación lineal de la señal.** La curva base asume que `β_señal` escala linealmente con `tracker_prob`. Se intentó validar con simulaciones en `p=0.25, 0.75`, pero el entorno actual hace que una corrida de n=50 tome más de una hora (la corrida n=300 histórica parece haber corrido en condiciones distintas). Se recurrió a una calibración rápida basada en el log de `p=0.5`, que estima la forma `β(p) = β(0.5)·(p/0.5)^b`.
+2. **`tracker_prob` es el efecto a medir.** No es un parámetro de nuisance que se calibra aparte. La curva dice "para un humano que trackea fracción p, necesito N(p) decisiones", pero p no se conocerá hasta datos pilotos.
+3. **Piezas por partida.** Con `--no_censorship` cada partida del simulador corre exactamente `max_pieces=500` piezas. Las sesiones humanas reales pueden diferir.
+4. **Decisiones forzadas no aportan.** Solo cuentan las decisiones con `k≥2` alternativas viables y `p_grad_excess` no degenerado.
+
+### 11.3. Resultados
+
+| H | n_dec | β_señal(0.5) bruto | piso oráculo CI_high | p_min campaña (10–15 ses, 100–470 p/ses) |
+|---|---|---|---|---|
+| 4–6 | 8,001 | 2.95 | 0.34 | **0.70 – >1** |
+| 7–8 | 3,161 | 2.88 | 0.37 | >1 – >1 |
+| 9–10 | 2,421 | 3.07 | 0.33 | >1 – >1 |
+| 11–12 | 1,971 | 2.21 | 0.53 | >1 – >1 |
+| 13–15 | 2,453 | 2.89 | 0.84 | >1 – >1 |
+
+`p_min` = `tracker_prob` mínimo detectable al 80% de potencia. `>1` significa que ni siquiera un tracker perfecto (`tracker_prob=1.0`) sería detectable en ese escenario bajo los supuestos actuales.
+
+### 11.4. Validación de la forma de `β_señal(p)`
+
+Se intentó correr simulaciones en `p=0.10, 0.25, 0.75`, pero cada una excede el tiempo disponible en este entorno (n=50 no terminó en 1 hora). Como proxy se usó una **calibración rápida** sobre el log de `p=0.5`: se simulan elecciones con utilidades mezcladas `-bw·base_val + τ·(p_stat + p·p_grad_excess)`, se ajusta `β(p) = β(0.5)·(p/0.5)^b`, y se normaliza al `β(0.5)` real.
+
+Formas estimadas (5 replicaciones):
+
+| H | forma `b` | interpretación |
+|---|---|---|
+| 4–6 | 1.21 | ligeramente convexa |
+| 7–8 | 0.94 | casi lineal |
+| 9–10 | 0.89 | cóncava |
+| 11–12 | 0.91 | cóncava |
+| 13–15 | 0.91 | cóncava |
+
+La forma es ruidosa y depende del sampleo de los εpsilon Gumbel, así que estos números son indicativos, no definitivos. Lo relevante es el efecto sobre `p_min`:
+
+| H | p_min lineal | p_min calibrado | cambio |
+|---|---|---|---|
+| 4–6 | 0.70 – >1 | 0.66 – >1 | marginal |
+| 7–8 | >1 – >1 | >1 – >1 | ninguno |
+| 9–10 | >1 – >1 | >1 – >1 | ninguno |
+| 11–12 | >1 – >1 | >1 – >1 | ninguno |
+| 13–15 | >1 – >1 | >1 – >1 | ninguno |
+
+**Conclusión de la calibración:** corregir la no-linealidad no mueve el veredicto. El cuello de botella es el **N efectivo por sesión**, no la extrapolación lineal.
+
+### 11.5. Respuesta a la pregunta de factibilidad
+
+**Pregunta:** ¿Cuál es el `tracker_prob` mínimo detectable con el N que una campaña humana realista entrega, y está por debajo del tracking humano plausible?
+
+**Respuesta:** En el mejor bin y escenario de campaña (H=4–6, 15 sesiones de 470 piezas), `p_min ≈ 0.66–0.70`. En todos los demás bins, `p_min > 1` (no detectable ni con tracking perfecto).
+
+**Implicación:** Si el tracking humano real es menor que ~0.66–0.70 —lo cual es plausible dado que el preview ya proporciona la pieza siguiente y el residuo de modelado del bag suele ser pequeño—, el **estudio conductual puro no tendrá potencia** para detectar anticipación via modelado del bag en Fase 1A. La información de bag-modeling por unidad de tiempo de juego es intrínsecamente escasa en este sustrato (preview=1 limita el horizonte a t+2; Şimşek deja pocas decisiones informativas; el 7-bag degenera rápido).
+
+### 11.6. Franqueza metodológica y siguiente palanca
+
+- `tracker_prob` **es** la cantidad que el estudio existe para medir; no se puede fijar a priori para dimensionar sin circularidad.
+- La curva no dice si el efecto existe; dice bajo qué valor del efecto un diseño dado es factible.
+- La extrapolación lineal y el supuesto de 500 piezas/partida deben revisarse con datos piloto humanos antes de una decisión final.
+- Antes de saltar al **probe exógeno** (que es un cambio de pregunta: deja de medir tracking espontáneo y mide uso-de-información-manipulada), la palabra correcta sobre el denominador es **densificar decisiones informativas por sesión**: concentrar el juego en H=4–6 (donde vive la mayoría de las decisiones), evaluar sesiones más largas, o diseñar un régimen que produzca más estados con ≥2 alternativas viables y bolsa no degenerada.
 
 ---
 
 ## Resumen operativo (una frase)
 
-Simular partidas 7-bag reales con censura, hacer que un **no-tracker con tablero completo** juegue el escenario de pozo, correr el estimador de Fase 1A controlando solo features BCTS lossy, y **medir el β residual** que ese no-tracker produce: ese número es el piso contra el cual —no contra cero— deberá competir cualquier humano, y su descomposición A/B dice si el remedio es más features o restringir estados.
+Simular partidas 7-bag naturales en el rango de H realista, evaluar la colocación de `P_t` contra la distribución de `t+2`, y medir cuánto β residual produce un no-tracker que no usa `S_t`: ese número es el piso de confound A. Validar con tracker imperfecto (`tracker_prob<1`) como ancla realista de potencia humana, con censura on/off como prueba de desacople, y con una curva N(`tracker_prob`) que incluya el piso como intervalo, N efectivo en decisiones útiles y un umbral de factibilidad de campaña humana.

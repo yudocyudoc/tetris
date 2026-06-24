@@ -5,8 +5,13 @@
 data/
 data_test/
 
-# Salidas de análisis confound_floor
+# Salidas de análisis confound_floor (todos los directorios out_*)
 analysis/confound_floor/out/
+analysis/confound_floor/out_*/
+
+# Archivos de datos grandes generados por los análisis
+*.parquet
+*.csv
 
 # Python cache
 __pycache__/
@@ -23,3 +28,7 @@ __pycache__/
 # OS
 .DS_Store
 Thumbs.db
+
+# Archivos temporales de prueba
+tmp_test.py
+results_colab.zip
