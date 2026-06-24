@@ -974,10 +974,17 @@ def main_single_run(args: argparse.Namespace, out_dir: Path) -> Dict:
             )
             for g in range(args.n_games)
         ]
-        with concurrent.futures.ProcessPoolExecutor(max_workers=n_workers) as executor:
-            for dec_t, dec_nt in executor.map(_simulate_one, arg_tuples, chunksize=max(1, args.n_games // n_workers)):
+        if n_workers == 1:
+            # Modo secuencial: evita problemas de fork/spawn en entornos restringidos (p.ej. Colab)
+            for args_tuple in arg_tuples:
+                dec_t, dec_nt = _simulate_one(args_tuple)
                 all_decisions.extend(dec_t)
                 all_decisions.extend(dec_nt)
+        else:
+            with concurrent.futures.ProcessPoolExecutor(max_workers=n_workers) as executor:
+                for dec_t, dec_nt in executor.map(_simulate_one, arg_tuples, chunksize=max(1, args.n_games // n_workers)):
+                    all_decisions.extend(dec_t)
+                    all_decisions.extend(dec_nt)
 
         # Reasignar decision_id de forma global para evitar colisiones entre partidas
         id_map = {}
