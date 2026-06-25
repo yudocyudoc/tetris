@@ -303,19 +303,38 @@ y se ajusta por la fracción de decisiones con varianza intra nula (`frac_zero_s
 
 ### 11.3. Resultados
 
-**Corrida Colab n=300** (n=300 juegos, max_pieces=500, no_censorship=True, H=4–15) — **datos definitivos**:
+**Corrida Colab n=300** (n=300 juegos, max_pieces=500, no_censorship=True, H=4–15):
 
-| H | n_dec (300 juegos) | dec/juego | dec/pieza | β_señal(0.5) | piso β oráculo | piso CI_high | p_min lineal | p_min b=1.22 |
-|---|---|---|---|---|---|---|---|---|
-| 4–6  | 34,851 | 116.2 | 0.232 | 2.88 |  0.061 | 0.22 | 0.35–0.86 | **0.33–0.69** |
-| 7–8  | 15,900 |  53.0 | 0.106 | 2.88 | -0.021 | 0.20 | 0.46–>1   | 0.43–0.93    |
-| 9–10 | 13,170 |  43.9 | 0.088 | 3.02 |  0.002 | 0.25 | 0.48–>1   | 0.53–>1      |
-| 11–12| 11,640 |  38.8 | 0.078 | 3.12 | -0.035 | 0.22 | 0.46–>1   | 0.46–0.99    |
-| 13–15| 15,420 |  51.4 | 0.103 | 3.15 |  0.111 | 0.34 | 0.42–>1   | 0.43–0.89    |
+**Datos crudos por bin** — dec/pieza ≈ 0.23–0.26, piso oráculo no-significativo en todos (bug ausente, piso limpio):
 
-Todos los pisos oráculo son no significativos (p>0.05): piso limpio confirmado en todos los bins con n=300.
+| H | n_dec (300 juegos) | dec/juego | dec/pieza | β_señal(0.5) | piso β oráculo | piso CI_high |
+|---|---|---|---|---|---|---|
+| 4–6  | 34,851 | 116.2 | 0.232 | 2.88 |  0.061 | 0.22 |
+| 7–8  | 15,900 |  53.0 | 0.106 | 2.88 | -0.021 | 0.20 |
+| 9–10 | 13,170 |  43.9 | 0.088 | 3.02 |  0.002 | 0.25 |
+| 11–12| 11,640 |  38.8 | 0.078 | 3.12 | -0.035 | 0.22 |
+| 13–15| 15,420 |  51.4 | 0.103 | 3.15 |  0.111 | 0.34 |
 
-**Para una sesión humana de 470 piezas** (usando dec/pieza de la columna anterior):
+**`p_min` por bin — cuatro esquinas (escenario × forma de curva)**
+
+Cálculo con β de n=300 en ambas ramas. Curva: β(p) = β(0.5)·(p/0.5)^b. Rango de b: 1.20 (OLS 4 puntos, jalado por p=0.10 ruidoso) a 1.33 (OLS sobre p∈{0.25,0.5,0.75}, más fiable). `>1` = no detectable con tracking perfecto.
+
+| Bin | b | 10×100 | 10×470 | 15×100 | 15×470 | banda |
+|-----|---|--------|--------|--------|--------|-------|
+| H=4–6  | 1.20 | 0.79 | 0.43 | 0.67 | **0.37** | 0.37–0.79 |
+| H=4–6  | 1.33 | 0.75 | 0.44 | 0.65 | **0.38** | 0.38–0.75 |
+| H=7–8  | 1.20 | >1   | 0.55 | 0.87 | **0.47** | 0.47–>1 |
+| H=7–8  | 1.33 | 0.95 | 0.55 | 0.82 | **0.47** | 0.47–0.95 |
+| H=9–10 | 1.20 | >1   | 0.56 | 0.88 | **0.48** | 0.48–>1 |
+| H=9–10 | 1.33 | 0.97 | 0.56 | 0.83 | **0.48** | 0.48–0.97 |
+| H=11–12| 1.20 | >1   | 0.55 | 0.86 | **0.47** | 0.47–>1 |
+| H=11–12| 1.33 | 0.95 | 0.54 | 0.82 | **0.47** | 0.47–0.95 |
+| H=13–15| 1.20 | 0.91 | 0.50 | 0.77 | **0.43** | 0.43–0.91 |
+| H=13–15| 1.33 | 0.86 | 0.50 | 0.74 | **0.44** | 0.44–0.86 |
+
+Columnas: escenario = n_sesiones × piezas/sesión. β de n=300 en ambas ramas. Corrección de ancla: el recálculo previo con calibración n=50 usaba β_real_05 de n=50 (3.28–3.33 en H=4–6) vs β de n=300 (2.88), creando una inversión artefactual (calibrado < lineal) que H=9–10 violaba en dirección correcta porque su ratio n=50/n=300 era el único < 1. Con betas consistentes (n=300), el calibrado queda sistemáticamente ≥ lineal, como corresponde a b > 1.
+
+**Para una sesión humana de 470 piezas:**
 
 | H | N dec/sesión 470p | N dec/campaña 15×470 |
 |---|---|---|
@@ -326,9 +345,7 @@ Todos los pisos oráculo son no significativos (p>0.05): piso limpio confirmado 
 | 13–15| 48  | 726  |
 | **Total H=4–15** | **~284** | **~4,274** |
 
-`p_min` = `tracker_prob` mínimo detectable al 80% de potencia. Rango de campaña: 10–15 sesiones × 100–470 piezas. `>1` = no detectable ni con tracking perfecto.
-
-**Nota histórica:** corrida local n=300 (pre-fix) usó `max_pieces=100` con pipeline que asumía 500 → N subestimado ×5 → `p_min` inflado a 0.66–0.70. Corrida Colab n=50 (primer run) daba 0.36 con n=50, floor CI ancho. Los dos sesgos se compensan: **el número definitivo es 0.33**.
+**Nota histórica de errores previos:** corrida local n=300 (pre-fix) usó `max_pieces=100` con pipeline que asumía 500 → N×5 inflado → `p_min` 0.66–0.70. Corrida n=50 Colab daba 0.36 con floor CI ancho. Análisis previo de n=300 citaba 0.33 como "definitivo": era artefacto de anclas cruzadas (β n=50 en calibrado, β n=300 en lineal). Número citable post-reconciliación: **0.37–0.38** (H=4–6, campaña 15×470, b∈{1.20,1.33}).
 
 ### 11.4. Forma real de `β_señal(p)` — simulaciones multi-p (Colab)
 
@@ -341,14 +358,24 @@ Todos los pisos oráculo son no significativos (p>0.05): piso limpio confirmado 
 | 0.50 | 3.15 | (2.85, 3.46) |
 | 0.75 | 5.60 | (5.24, 5.96) |
 
-La curva es **fuertemente convexa** (b≈1.22 en ajuste β = a·p^b). Consecuencias:
-- A `p` bajo (≲0.25), la señal es **mucho menor** que cualquier extrapolación lineal o cóncava sugería.
+La curva es **fuertemente convexa**. Ajuste β(p) = β(0.5)·(p/0.5)^b con los cuatro puntos:
+
+| Par vs ancla p=0.5 | b estimado |
+|---|---|
+| (0.5, 0.10) | 1.17 — punto más ruidoso, CI amplio (0.24–0.71) |
+| (0.5, 0.25) | 1.30 |
+| (0.5, 0.75) | 1.42 |
+| OLS 4 puntos | **1.20** — jalado por p=0.10 |
+| OLS p∈{0.25,0.5,0.75} | **1.33** — más fiable, excluye punto ruidoso |
+
+Rango citable: **b ∈ [1.20, 1.33]**. Para decisiones de factibilidad usar b=1.33 (conservador); b=1.20 como borde optimista. La diferencia sobre `p_min` en H=4–6 optimista es 0.01 (0.37 vs 0.38), pequeña pero en la dirección correcta: más convexidad → umbral más alto.
+
+Consecuencias:
+- A `p` bajo (≲0.25), la señal es **mucho menor** que cualquier extrapolación lineal sugería.
 - A `p=0.10`, CI (0.24, 0.71) ya roza el rango del piso — señal muy débil si el humano trackea poco.
 - A `p` moderado-alto (≳0.4), la señal crece aceleradamente.
 
-**El proxy (`fast_calibrate_signal_v2.py`) estaba equivocado en la dirección.** Estimó b≈0.9–1.0 (casi lineal) cuando la realidad es fuertemente convexa (b≈1.22). El proxy mide la parametrización de la utilidad mixta, no la dinámica real del simulador. Queda archivado como inválido; no debe citarse para inferencias sobre `β_señal`.
-
-Efecto sobre `p_min`: la curva convexa hace que `p_min` con la forma real sea ligeramente mayor que con extrapolación lineal desde 0.5 (≈0.37 en H=4–6 vs 0.33 lineal). El cuello de botella sigue siendo el **N efectivo por sesión**, no la forma de la curva.
+**El proxy (`fast_calibrate_signal_v2.py`) estaba equivocado en la dirección.** Estimó b≈0.9–1.0 (casi lineal o cóncavo) cuando la realidad es fuertemente convexa. El proxy mide la parametrización de la utilidad mixta, no la dinámica real del simulador. Queda archivado como inválido.
 
 ### 11.4-bis. Prueba de estrés de la featurización [ABIERTO — condición previa al piloto humano]
 
@@ -367,20 +394,26 @@ Efecto sobre `p_min`: la curva convexa hace que `p_min` con la forma real sea li
 
 ### 11.5. Respuesta a la pregunta de factibilidad
 
-[DEFINITIVO — corrida Colab n=300, max_pieces=500, b=1.22]
+[ACTUALIZADO — corrida Colab n=300, max_pieces=500, b∈{1.20,1.33}, betas consistentes]
 
 **Pregunta:** ¿Cuál es el `tracker_prob` mínimo detectable con el N que una campaña humana realista entrega, y está por debajo del tracking humano plausible?
 
-**Respuesta:**
+**Respuesta (banda, dos fuentes de incertidumbre explícitas: escenario de campaña × forma de curva):**
 
-- **Mejor bin/escenario (H=4–6, 15 sesiones × 470 piezas): `p_min = 0.33`** (n=300, b=1.22, piso CI_high=0.22).
-- Rango de campaña H=4–6: 0.33–0.69 (escenario optimista a pesimista).
-- Bins adicionales en escenario optimista: H=7–8 → 0.43; H=11–12 → 0.46; H=13–15 → 0.43.
-- Piso oráculo confirmado limpio en todos los bins (centros próximos a 0, CIs incluyen 0).
+- **Mejor bin/escenario (H=4–6, 15 sesiones × 470 piezas):**
+  - `p_min = 0.37` con b=1.20 (borde optimista)
+  - `p_min = 0.38` con b=1.33 (borde conservador, caso que manda para decisión)
+- Rango completo H=4–6 (campaña 10×100 a 15×470, b 1.20–1.33): **0.37–0.79**
+- Bins adicionales, escenario 15×470: H=7–8 → 0.47; H=9–10 → 0.48; H=11–12 → 0.47; H=13–15 → 0.43–0.44
+- Piso oráculo limpio en todos los bins: centros próximos a 0, todos no significativos (p>0.05)
 
-**Veredicto definitivo:** El programa **no está condenado al probe exógeno**. La zona detectable con campaña realista es `p ≳ 0.33–0.35` en H=4–6 y `p ≳ 0.43–0.46` en bins adicionales. Si `p ≲ 0.30`, no es detectable sin un diseño más rico. La pregunta que decide la factibilidad es empírica: **¿el humano trackea por encima de ~0.33–0.40?** Eso solo lo responde un piloto humano corto.
+**Veredicto (anclado en b=1.33, campaña realista 15×470):** Con el caso conservador, `p_min = 0.38` en H=4–6. El programa **no está condenado al probe exógeno** — el umbral está por debajo de 0.40. Si el humano trackea `p ≳ 0.38–0.40`, el diseño es detectable. Si `p ≲ 0.35`, no. Solo H=4–6 cae bajo 0.40 en escenario optimista de campaña; los otros bins requieren `p ≳ 0.43–0.48`. La pregunta que decide es empírica: **¿el humano trackea con suficiente frecuencia en H=4–6?** Eso solo lo responde un piloto humano corto — y el diseño del piloto debe garantizar juego en stack bajo o estimar cuánto cae naturalmente en ese bin.
 
-**Por qué cambió desde el veredicto anterior (0.66–0.70):** casi íntegramente el bug `max_pieces` (§11.2 supuesto 3). La corrida local n=300 usó `max_pieces=100` pero el pipeline asumía 500 → N subestimado ×5. La corrida Colab n=50 con el N correcto daba 0.36; la corrida Colab n=300 (definitiva) da 0.33. Los dos sesgos de n=50 (floor CI ancho y convexidad) se cancelan con el floor más estrecho de n=300.
+**Por qué cambió desde el veredicto anterior (0.66–0.70 → 0.33 → 0.38):**
+1. Bug `max_pieces` (§11.2): corrida local asumía N×5 inflado → 0.66–0.70.
+2. Corrida Colab n=50 con N correcto: 0.36 (floor CI ancho por n pequeño).
+3. Análisis previo de n=300 citaba 0.33: artefacto de anclas cruzadas (β n=50 en calibrado, β n=300 en lineal; la inversión calibrado < lineal con b > 1 era la firma del bug).
+4. Recálculo con betas n=300 consistentes y b∈{1.20,1.33}: **0.37–0.38** en H=4–6 optimista.
 
 ### 11.6. Franqueza metodológica y siguiente paso
 
