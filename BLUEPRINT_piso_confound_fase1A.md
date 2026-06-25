@@ -398,16 +398,17 @@ Consecuencias:
 
 **Pregunta:** ¿Cuál es el `tracker_prob` mínimo detectable con el N que una campaña humana realista entrega, y está por debajo del tracking humano plausible?
 
-**Respuesta (banda, dos fuentes de incertidumbre explícitas: escenario de campaña × forma de curva):**
+**Respuesta:**
 
-- **Mejor bin/escenario (H=4–6, 15 sesiones × 470 piezas):**
-  - `p_min = 0.37` con b=1.20 (borde optimista)
-  - `p_min = 0.38` con b=1.33 (borde conservador, caso que manda para decisión)
-- Rango completo H=4–6 (campaña 10×100 a 15×470, b 1.20–1.33): **0.37–0.79**
-- Bins adicionales, escenario 15×470: H=7–8 → 0.47; H=9–10 → 0.48; H=11–12 → 0.47; H=13–15 → 0.43–0.44
-- Piso oráculo limpio en todos los bins: centros próximos a 0, todos no significativos (p>0.05)
+- `p_min` H=4–6, b∈{1.20,1.33}: **0.37–0.38** (esquina optimista: campaña 15×470) hasta **0.75–0.79** (campaña 10×100). Banda completa: **0.37–0.79**. Robusto a `b` (diferencia ≤0.01 entre b=1.20 y b=1.33 en cualquier esquina).
+- Detección solo en stack bajo (H=4–6); los otros bins arrancan en ≥0.43 y suben a >1.
+- Piso oráculo limpio en todos los bins: centros próximos a 0, todos no significativos (p>0.05).
 
-**Veredicto (anclado en b=1.33, campaña realista 15×470):** Con el caso conservador, `p_min = 0.38` en H=4–6. El programa **no está condenado al probe exógeno** — el umbral está por debajo de 0.40. Si el humano trackea `p ≳ 0.38–0.40`, el diseño es detectable. Si `p ≲ 0.35`, no. Solo H=4–6 cae bajo 0.40 en escenario optimista de campaña; los otros bins requieren `p ≳ 0.43–0.48`. La pregunta que decide es empírica: **¿el humano trackea con suficiente frecuencia en H=4–6?** Eso solo lo responde un piloto humano corto — y el diseño del piloto debe garantizar juego en stack bajo o estimar cuánto cae naturalmente en ese bin.
+**Veredicto: no concluye viabilidad.** Fija que el estudio conductual requiere `tracker_prob ≳ 0.38` en H=4–6 bajo la campaña más favorable, y más bajo escenarios realistas de campaña. Si el bag-modeling humano está dominado por el residuo-sobre-preview (prior de Berry), es plausible que no alcance ese umbral, en cuyo caso el probe exógeno vuelve como única vía.
+
+**Dos preguntas abiertas que el piloto debe cerrar:**
+1. El `tracker_prob` humano real — ¿supera 0.38 en H=4–6?
+2. Cuántas decisiones útiles en H=4–6 produce una sesión humana natural — eso fija qué esquina de campaña es la real (entre 0.38 y 0.79).
 
 **Por qué cambió desde el veredicto anterior (0.66–0.70 → 0.33 → 0.38):**
 1. Bug `max_pieces` (§11.2): corrida local asumía N×5 inflado → 0.66–0.70.
