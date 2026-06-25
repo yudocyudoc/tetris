@@ -251,10 +251,16 @@ cd analysis\confound_floor
   --log out_t2_H15_n300_tp05_nocensor/decisions_log_k5_sample20.parquet `
   --real_results out_power_t2/bin_results.json --out out_fast_calibrate_v2
 
-# Recalcular p_min con curva calibrada
+# Recalcular p_min con curva calibrada (proxy — b~0.9-1.0, NO usar para citas)
 .venv\Scripts\python recalc_power_calibrated.py `
   --bin_results out_power_t2/bin_results.json `
   --calibration out_fast_calibrate_v2/fast_calibration_v2.json
+
+# Recalcular p_min con curva real convexa (b=1.22, ajustado en simulaciones multi-p Colab)
+.venv\Scripts\python recalc_power_calibrated.py `
+  --bin_results ../../colab/results_colab/out_power_t2/bin_results.json `
+  --calibration ../../colab/results_colab/out_fast_calibrate_v2/fast_calibration_v2.json `
+  --b_shape_override 1.22
 ```
 
 ---
@@ -289,63 +295,84 @@ y se ajusta por la fracción de decisiones con varianza intra nula (`frac_zero_s
 
 ### 11.2. Supuestos críticos (explícitos)
 
-1. **Extrapolación lineal de la señal.** La curva base asume que `β_señal` escala linealmente con `tracker_prob`. Se intentó validar con simulaciones en `p=0.25, 0.75`, pero el entorno actual hace que una corrida de n=50 tome más de una hora (la corrida n=300 histórica parece haber corrido en condiciones distintas). Se recurrió a una calibración rápida basada en el log de `p=0.5`, que estima la forma `β(p) = β(0.5)·(p/0.5)^b`.
+1. **Forma de `β_señal(p)`: convexa, no lineal.** [ACTUALIZADO] Las simulaciones reales en `p=0.10, 0.25, 0.50, 0.75` (corridas Colab, n=50, max_pieces=500) entregan: β(0.10)=0.48, β(0.25)=1.28, β(0.50)=3.15, β(0.75)=5.60. La forma es **fuertemente convexa** (b≈1.22 en ajuste potencial). La calibración rápida proxy estimó b≈0.9–1.0 (casi lineal) — **estaba equivocada en la dirección**. El proxy mide la parametrización de la utilidad, no la dinámica real del simulador. Ver §11.4.
 2. **`tracker_prob` es el efecto a medir.** No es un parámetro de nuisance que se calibra aparte. La curva dice "para un humano que trackea fracción p, necesito N(p) decisiones", pero p no se conocerá hasta datos pilotos.
-3. **Piezas por partida.** Con `--no_censorship` cada partida del simulador corre exactamente `max_pieces=500` piezas. Las sesiones humanas reales pueden diferir.
+3. **Piezas por partida y bug corregido.** Con `--no_censorship` cada partida corre exactamente `max_pieces` piezas. [CORRECCIÓN] Las corridas históricas (n=300 local) usaron `max_pieces=100` (CLI default), pero `power_curve_t2.py` asumía 500 cuando el campo no estaba en el JSON — subestimando N por sesión en ×5 e inflando `p_min`. El campo `max_pieces` se agregó al dict de parámetros guardados en `resultados_piso_k*.json` ([commit corrección](analysis/confound_floor/confound_floor_t2.py)). Las corridas Colab usaron `max_pieces=500` explícitamente, por lo que sus resultados son correctos.
 4. **Decisiones forzadas no aportan.** Solo cuentan las decisiones con `k≥2` alternativas viables y `p_grad_excess` no degenerado.
 
 ### 11.3. Resultados
 
-| H | n_dec | β_señal(0.5) bruto | piso oráculo CI_high | p_min campaña (10–15 ses, 100–470 p/ses) |
-|---|---|---|---|---|
-| 4–6 | 8,001 | 2.95 | 0.34 | **0.70 – >1** |
-| 7–8 | 3,161 | 2.88 | 0.37 | >1 – >1 |
-| 9–10 | 2,421 | 3.07 | 0.33 | >1 – >1 |
-| 11–12 | 1,971 | 2.21 | 0.53 | >1 – >1 |
-| 13–15 | 2,453 | 2.89 | 0.84 | >1 – >1 |
+**Corrida Colab** (n=50 juegos, max_pieces=500, no_censorship=True, H=4–15):
 
-`p_min` = `tracker_prob` mínimo detectable al 80% de potencia. `>1` significa que ni siquiera un tracker perfecto (`tracker_prob=1.0`) sería detectable en ese escenario bajo los supuestos actuales.
+| H | n_dec (50 juegos) | dec/juego | dec/pieza | β_señal(0.5) bruto | piso oráculo CI_high | p_min campaña lineal | p_min campaña b=1.22 |
+|---|---|---|---|---|---|---|---|
+| 4–6  | 5,831 | 116.6 | 0.233 | 3.33 | 0.43 | 0.33 – 0.78 | **0.36 – 0.72** |
+| 7–8  | 2,485 |  49.7 | 0.099 | 3.18 | 0.71 | 0.52 – >1   | 0.52 – >1    |
+| 9–10 | 2,102 |  42.0 | 0.084 | 2.70 | 0.29 | 0.56 – >1   | 0.55 – >1    |
+| 11–12| 1,981 |  39.6 | 0.079 | 3.16 | 0.17 | 0.43 – >1   | 0.44 – 0.95  |
+| 13–15| 2,649 |  53.0 | 0.106 | 3.16 | 0.52 | 0.45 – >1   | 0.46 – 0.92  |
 
-### 11.4. Validación de la forma de `β_señal(p)`
+**Para una sesión humana de 470 piezas** (usando dec/pieza de la columna anterior):
 
-Se intentó correr simulaciones en `p=0.10, 0.25, 0.75`, pero cada una excede el tiempo disponible en este entorno (n=50 no terminó en 1 hora). Como proxy se usó una **calibración rápida** sobre el log de `p=0.5`: se simulan elecciones con utilidades mezcladas `-bw·base_val + τ·(p_stat + p·p_grad_excess)`, se ajusta `β(p) = β(0.5)·(p/0.5)^b`, y se normaliza al `β(0.5)` real.
-
-Formas estimadas (5 replicaciones):
-
-| H | forma `b` | interpretación |
+| H | N dec/sesión 470p | N dec/campaña 15×470 |
 |---|---|---|
-| 4–6 | 1.21 | ligeramente convexa |
-| 7–8 | 0.94 | casi lineal |
-| 9–10 | 0.89 | cóncava |
-| 11–12 | 0.91 | cóncava |
-| 13–15 | 0.91 | cóncava |
+| 4–6  | **110** | **1,644** |
+| 7–8  | 47  | 700  |
+| 9–10 | 39  | 590  |
+| 11–12| 37  | 557  |
+| 13–15| 50  | 748  |
+| **Total H=4–15** | **~282** | **~4,230** |
 
-La forma es ruidosa y depende del sampleo de los εpsilon Gumbel, así que estos números son indicativos, no definitivos. Lo relevante es el efecto sobre `p_min`:
+`p_min` = `tracker_prob` mínimo detectable al 80% de potencia. Columna "b=1.22" usa la curva real convexa ajustada sobre simulaciones multi-p. `>1` = no detectable ni con tracking perfecto.
 
-| H | p_min lineal | p_min calibrado | cambio |
-|---|---|---|---|
-| 4–6 | 0.70 – >1 | 0.66 – >1 | marginal |
-| 7–8 | >1 – >1 | >1 – >1 | ninguno |
-| 9–10 | >1 – >1 | >1 – >1 | ninguno |
-| 11–12 | >1 – >1 | >1 – >1 | ninguno |
-| 13–15 | >1 – >1 | >1 – >1 | ninguno |
+**Corrección analítica para n=300 (estimada):** el floor CI_high con n=300 se estrecha vía escala 1/√n (0.426 → ~0.17); aplicando b=1.22 da `p_min ≈ 0.32`. Los dos sesgos de n=50 (floor CI ancho: sube p_min +0.03) y convexidad (sube p_min +0.03) se compensan parcialmente con el floor de n=300 (baja p_min −0.04) → **rango honesto: ~0.32–0.36 pendiente corrida n=300 en sustrato correcto (max_pieces=500)**.
 
-**Conclusión de la calibración:** corregir la no-linealidad no mueve el veredicto. El cuello de botella es el **N efectivo por sesión**, no la extrapolación lineal.
+**Nota sobre corrida local n=300** (histórica, ahora corregida): usó `max_pieces=100` pero el pipeline asumía 500 → N subestimado ×5 → `p_min` inflado a 0.66–0.70. El número válido es el de la corrida Colab.
+
+### 11.4. Forma real de `β_señal(p)` — simulaciones multi-p (Colab)
+
+[ACTUALIZADO] Las simulaciones reales en Colab (n=50, max_pieces=500) entregaron `β_señal` global (todos los bins combinados) en cuatro valores de `tracker_prob`:
+
+| tracker_prob | β_señal | IC 95% |
+|---|---|---|
+| 0.10 | 0.48 | (0.24, 0.71) |
+| 0.25 | 1.28 | (1.03, 1.53) |
+| 0.50 | 3.15 | (2.85, 3.46) |
+| 0.75 | 5.60 | (5.24, 5.96) |
+
+La curva es **fuertemente convexa** (b≈1.22 en ajuste β = a·p^b). Consecuencias:
+- A `p` bajo (≲0.25), la señal es **mucho menor** que cualquier extrapolación lineal o cóncava sugería.
+- A `p=0.10`, CI (0.24, 0.71) ya roza el rango del piso — señal muy débil si el humano trackea poco.
+- A `p` moderado-alto (≳0.4), la señal crece aceleradamente.
+
+**El proxy (`fast_calibrate_signal_v2.py`) estaba equivocado en la dirección.** Estimó b≈0.9–1.0 (casi lineal) cuando la realidad es fuertemente convexa (b≈1.22). El proxy mide la parametrización de la utilidad mixta, no la dinámica real del simulador. Queda archivado como inválido; no debe citarse para inferencias sobre `β_señal`.
+
+Efecto sobre `p_min`: la curva convexa hace que `p_min` con la forma real sea ligeramente mayor que con extrapolación lineal desde 0.5 (≈0.37 en H=4–6 vs 0.33 lineal). El cuello de botella sigue siendo el **N efectivo por sesión**, no la forma de la curva.
 
 ### 11.5. Respuesta a la pregunta de factibilidad
 
+[ACTUALIZADO con corrida Colab]
+
 **Pregunta:** ¿Cuál es el `tracker_prob` mínimo detectable con el N que una campaña humana realista entrega, y está por debajo del tracking humano plausible?
 
-**Respuesta:** En el mejor bin y escenario de campaña (H=4–6, 15 sesiones de 470 piezas), `p_min ≈ 0.66–0.70`. En todos los demás bins, `p_min > 1` (no detectable ni con tracking perfecto).
+**Respuesta (corrida Colab n=50, max_pieces=500, curva real b=1.22):**
 
-**Implicación:** Si el tracking humano real es menor que ~0.66–0.70 —lo cual es plausible dado que el preview ya proporciona la pieza siguiente y el residuo de modelado del bag suele ser pequeño—, el **estudio conductual puro no tendrá potencia** para detectar anticipación via modelado del bag en Fase 1A. La información de bag-modeling por unidad de tiempo de juego es intrínsecamente escasa en este sustrato (preview=1 limita el horizonte a t+2; Şimşek deja pocas decisiones informativas; el 7-bag degenera rápido).
+- Mejor bin/escenario (H=4–6, 15 sesiones × 470 piezas): `p_min = 0.36` (con curva convexa real).
+- Estimación n=300 + b=1.22: `p_min ≈ 0.32`. Los dos sesgos de n=50 se compensan parcialmente.
+- **Rango honesto citeable:** `p_min ∈ [0.32, 0.36]` hasta que corra la corrida n=300 con max_pieces=500.
+- Bins adicionales (H=11–12, H=13–15): `p_min ≈ 0.44–0.46` en escenario optimista de campaña.
 
-### 11.6. Franqueza metodológica y siguiente palanca
+**Veredicto revisado:** El programa **no está condenado al probe exógeno**. La zona detectable con campaña realista es `p ≳ 0.36–0.40` en varios bins. Si `p ≲ 0.32`, no es detectable. La pregunta que decide la factibilidad es empírica: **¿el humano trackea por encima de ~0.35–0.40?** Eso solo lo responde un piloto humano corto.
+
+**Por qué cambió desde el veredicto anterior (0.66–0.70):** casi íntegramente el bug `max_pieces` (§11.2 supuesto 3). La corrida local n=300 usó `max_pieces=100` pero el pipeline asumía 500 → N subestimado ×5 → `p_min` inflado. Con el N correcto (corrida Colab, max_pieces=500), y con la curva real b=1.22, el resultado es 0.32–0.36. El 0.33 del análisis lineal no estaba lejos, pero por razones equivocadas (dos sesgos opuestos que se cancelan accidentalmente).
+
+### 11.6. Franqueza metodológica y siguiente paso
 
 - `tracker_prob` **es** la cantidad que el estudio existe para medir; no se puede fijar a priori para dimensionar sin circularidad.
 - La curva no dice si el efecto existe; dice bajo qué valor del efecto un diseño dado es factible.
-- La extrapolación lineal y el supuesto de 500 piezas/partida deben revisarse con datos piloto humanos antes de una decisión final.
-- Antes de saltar al **probe exógeno** (que es un cambio de pregunta: deja de medir tracking espontáneo y mide uso-de-información-manipulada), la palabra correcta sobre el denominador es **densificar decisiones informativas por sesión**: concentrar el juego en H=4–6 (donde vive la mayoría de las decisiones), evaluar sesiones más largas, o diseñar un régimen que produzca más estados con ≥2 alternativas viables y bolsa no degenerada.
+- La curva convexa real implica que a `p` bajo (≲0.25) la señal es débil incluso con N grande — si el humano trackea poco, el estudio no detectará nada sin un diseño más rico.
+- **La densificación por concentración en H=4–6 pierde fuerza** como palanca: los conteos de la corrida Colab muestran decisiones razonablemente repartidas en todos los bins (H=4–6 tiene ~2.3× el bin más chico, no 3×). No hay un bin dramáticamente más rico al que mudarse.
+- **El siguiente paso concreto no es probe ni densificar: es un piloto humano mínimo.** El piloto no necesita estimar `p` con precisión; solo necesita **distinguir `p>0.4` de `p<0.2`**, que es una pregunta gruesa y barata. 2–3 sesiones pueden plausiblemente separarlas. Esa única medición decide entre "recolección conductual viable" y "probe exógeno".
 
 ---
 

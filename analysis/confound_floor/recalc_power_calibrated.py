@@ -67,6 +67,12 @@ def main() -> int:
     parser.add_argument("--calibration", type=str, required=True)
     parser.add_argument("--alpha", type=float, default=0.05)
     parser.add_argument("--power", type=float, default=0.80)
+    parser.add_argument(
+        "--b_shape_override", type=float, default=None,
+        help="Fuerza b_shape para todos los bins (overrides fast_calibration_v2.json). "
+             "Usar con la curva real: b=1.22 (ajustado en β(0.1,0.25,0.5,0.75) de corridas Colab). "
+             "El proxy fast_calibrate_signal_v2 estimó b≈0.9–1.0, que estaba equivocado en dirección."
+    )
     args = parser.parse_args()
 
     with open(args.bin_results, encoding="utf-8") as f:
@@ -74,6 +80,9 @@ def main() -> int:
     with open(args.calibration, encoding="utf-8") as f:
         calibration = json.load(f)
 
+    if args.b_shape_override is not None:
+        print(f"NOTA: usando b_shape_override={args.b_shape_override:.3f} para todos los bins.")
+        print("      (proxy fast_calibrate estimo b~0.9-1.0; real multi-p Colab b~1.22)")
     print("p_min por bin y escenario: LINEAL vs CALIBRADO")
     print("=" * 80)
     print(f"{'Bin':<8} {'Escenario':<20} {'p_min lineal':<15} {'p_min calibrado':<15} {'forma b':<10}")
@@ -83,7 +92,9 @@ def main() -> int:
         if "error" in br or label not in calibration:
             continue
         cal = calibration[label]
-        b_shape = cal["b_shape"]
+        b_shape = args.b_shape_override if args.b_shape_override is not None else cal["b_shape"]
+        # Parcheamos el cal temporalmente para que recalc_p_min_for_bin use el b correcto
+        cal_effective = dict(cal, b_shape=b_shape)
         beta_05 = br["tracker_bruto"]["beta"]
 
         # Escenarios: campaña (min y max)
@@ -101,7 +112,7 @@ def main() -> int:
                     br["intra_decision"]["p_grad_excess"]["frac_zero_std"],
                 )
                 # calibrado
-                p_min_cal = recalc_p_min_for_bin(br, cal, n_dec, args.alpha, args.power)
+                p_min_cal = recalc_p_min_for_bin(br, cal_effective, n_dec, args.alpha, args.power)
                 scenarios.append((n_sessions, pieces_per_session, p_min_lin, p_min_cal))
 
         p_min_lin_range = (min(s[2] for s in scenarios if s[2] is not None),
@@ -114,7 +125,8 @@ def main() -> int:
             hi_str = f"{hi:.2f}" if hi < 1 else ">1"
             return f"{lo_str}-{hi_str}"
 
-        print(f"{label:<8} {'campaña':<20} {fmt_range(*p_min_lin_range):<15} {fmt_range(*p_min_cal_range):<15} {b_shape:<10.2f}")
+        b_label = f"{b_shape:.2f}" + ("*" if args.b_shape_override is not None else "")
+        print(f"{label:<8} {'campaña':<20} {fmt_range(*p_min_lin_range):<15} {fmt_range(*p_min_cal_range):<15} {b_label:<10}")
 
     print("\nNota: p_min calibrado usa beta(p) = beta(0.5) * (p/0.5)^b_shape.")
     print("b<1 indica curva concava (mas señal a p bajo de lo que predice lineal).")

@@ -477,13 +477,26 @@ def main() -> int:
 
     # Determinar piezas por partida de manera robusta
     results_json_path = results_dir / "resultados_piso_k5.json"
-    max_pieces = 500
+    max_pieces = None
     no_censorship = False
     if results_json_path.exists():
         with open(results_json_path, encoding="utf-8") as f:
             res_meta = json.load(f)
-        max_pieces = res_meta.get("params", {}).get("max_pieces", 500)
-        no_censorship = res_meta.get("params", {}).get("no_censorship", False)
+        params = res_meta.get("params", {})
+        if "max_pieces" not in params:
+            raise ValueError(
+                f"'max_pieces' no está en {results_json_path}.\n"
+                "Regenerá la corrida con la versión corregida de confound_floor_t2.py "
+                "que guarda max_pieces en el JSON de resultados.\n"
+                "Un default silencioso aquí escala el resultado en ×5 y produce p_min falso."
+            )
+        max_pieces = int(params["max_pieces"])
+        no_censorship = params.get("no_censorship", False)
+    else:
+        raise FileNotFoundError(
+            f"No se encontró {results_json_path}. "
+            "Asegurate de pasar --results_dir con la corrida correcta."
+        )
     if no_censorship:
         # Con no_censorship cada partida corre exactamente max_pieces piezas.
         pieces_per_game = float(max_pieces)

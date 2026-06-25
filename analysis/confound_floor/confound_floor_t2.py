@@ -1073,6 +1073,7 @@ def main_single_run(args: argparse.Namespace, out_dir: Path) -> Dict:
                 "k": k,
                 "H_min": args.H_min,
                 "H_max": args.H_max,
+                "max_pieces": args.max_pieces,
                 "no_censorship": args.no_censorship,
             },
             "diagnostic_intra_decision": diag,
