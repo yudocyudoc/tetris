@@ -349,6 +349,21 @@ La curva es **fuertemente convexa** (b≈1.22 en ajuste β = a·p^b). Consecuenc
 
 Efecto sobre `p_min`: la curva convexa hace que `p_min` con la forma real sea ligeramente mayor que con extrapolación lineal desde 0.5 (≈0.37 en H=4–6 vs 0.33 lineal). El cuello de botella sigue siendo el **N efectivo por sesión**, no la forma de la curva.
 
+### 11.4-bis. Prueba de estrés de la featurización [ABIERTO — condición previa al piloto humano]
+
+**Origen:** crítica externa (Gemini) sobre la suficiencia descriptiva de la featurización (§5.2) — "suficiencia descriptiva" es un acto de fe mientras no se estrese. El punto es válido; su formulación del mecanismo, no (decía falso *negativo* por omitir una propiedad; el modo real es falso negativo solo si la propiedad omitida correlaciona con `S_t` de un modo que el oráculo no capture **y que el no-tracker sintético tampoco use** — así no aparece en el sintético pero sí en el humano).
+
+**El riesgo concreto:** el piso limpio de B se midió con una `π_fill` bag-ciega específica. La "suficiencia" del oráculo L2 puede ser **local a esa heurística**. Si un generador con táctica más rica usa información de tablero correlacionada con el bag que el oráculo no absorbe, el piso del no-tracker se aparta de cero — y eso es un **falso negativo de piso limpio** que envenenaría el piloto humano (declararíamos limpio un sustrato que no lo es para un jugador real).
+
+**Prueba (antes de tocar un humano):**
+- Re-correr la medición del piso de B con **agentes generadores de táctica creciente**, no solo `π_fill` bag-ciega: incluir al menos un generador que use información táctica **correlacionada con el bag** (p.ej. que prepare transiciones específicas para J/L según historia de piezas).
+- **Criterio de fallo:** si el piso del **no-tracker** (oráculo L2) se aparta de cero al cambiar el generador, la featurización **no es suficiente** y el piso limpio era local a `π_fill`. Remedio = añadir features hasta que el piso vuelva a cero bajo todos los generadores (suficiencia descriptiva, ahora estresada), o restringir la observable a estados donde la propiedad no capturada no opere.
+- Nota de signo: el modo de falla a vigilar es el piso del no-tracker **alejándose de cero** (aparece confound que el oráculo no cierra), no la separación del tracker.
+
+**Por qué es previa al piloto:** un piso limpio validado solo bajo una heurística no garantiza piso limpio frente a un humano, cuya táctica es desconocida y plausiblemente más rica que `π_fill`. Sin este estrés, el piloto humano podría medir contra un piso falsamente declarado cero.
+
+---
+
 ### 11.5. Respuesta a la pregunta de factibilidad
 
 [ACTUALIZADO con corrida Colab]
@@ -372,6 +387,7 @@ Efecto sobre `p_min`: la curva convexa hace que `p_min` con la forma real sea li
 - La curva no dice si el efecto existe; dice bajo qué valor del efecto un diseño dado es factible.
 - La curva convexa real implica que a `p` bajo (≲0.25) la señal es débil incluso con N grande — si el humano trackea poco, el estudio no detectará nada sin un diseño más rico.
 - **La densificación por concentración en H=4–6 pierde fuerza** como palanca: los conteos de la corrida Colab muestran decisiones razonablemente repartidas en todos los bins (H=4–6 tiene ~2.3× el bin más chico, no 3×). No hay un bin dramáticamente más rico al que mudarse.
+- **Condición previa al piloto:** completar la prueba de estrés de featurización (§11.4-bis). Sin ese paso, el piso limpio de B está validado solo para `π_fill` bag-ciega, no para la táctica desconocida de un humano real.
 - **El siguiente paso concreto no es probe ni densificar: es un piloto humano mínimo.** El piloto no necesita estimar `p` con precisión; solo necesita **distinguir `p>0.4` de `p<0.2`**, que es una pregunta gruesa y barata. 2–3 sesiones pueden plausiblemente separarlas. Esa única medición decide entre "recolección conductual viable" y "probe exógeno".
 
 ---
