@@ -29,6 +29,13 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
+# Resultados descargados de corridas Colab (regenerables; incluye snapshots de scripts y outputs)
+colab/results_colab/
+colab/results_colab_*/
+
+# Documentos de trabajo de sesión (no forman parte del repo)
+RESUMEN_sesion_*.md
+
 # Archivos temporales de prueba
 tmp_test.py
 results_colab.zip
