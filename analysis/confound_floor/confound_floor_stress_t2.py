@@ -420,13 +420,20 @@ def main() -> int:
                 print(f"  {s - args.seed + 1}/{args.n_games} partidas...")
     else:
         import concurrent.futures
+        import multiprocessing
+
+        _worker_params = (params_nt, k, args.H_min, args.H_max,
+                          True, args.max_pieces, args.p_bag_fill, args.alpha_depth)
+
         def _run(s):
-            return simulate_stress_game(
-                s, params_nt, k, args.H_min, args.H_max,
-                no_censorship=True, max_pieces=args.max_pieces,
-                p_bag_fill=args.p_bag_fill, alpha_depth=args.alpha_depth,
-            )
-        with concurrent.futures.ThreadPoolExecutor(max_workers=args.n_workers) as ex:
+            return simulate_stress_game(s, *_worker_params)
+
+        # Usar spawn para evitar deadlock de fork en Colab (numpy/scipy inician
+        # threads en el proceso padre que se congelan al hacer fork).
+        ctx = multiprocessing.get_context("spawn")
+        with concurrent.futures.ProcessPoolExecutor(
+            max_workers=args.n_workers, mp_context=ctx
+        ) as ex:
             futures = {ex.submit(_run, s): s for s in seeds}
             for i, fut in enumerate(concurrent.futures.as_completed(futures)):
                 all_decisions.extend(fut.result())
