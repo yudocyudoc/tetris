@@ -296,6 +296,20 @@ def simulate_stress_game(
 
 
 # ---------------------------------------------------------------------------
+# Worker de nivel de modulo (necesario para pickle con ProcessPoolExecutor)
+# ---------------------------------------------------------------------------
+
+def _simulate_worker(args: tuple) -> List[Dict]:
+    """Envuelve simulate_stress_game para que sea serializable por pickle."""
+    seed, params_nt, k, H_min, H_max, max_pieces, p_bag_fill, alpha_depth = args
+    return simulate_stress_game(
+        seed, params_nt, k, H_min, H_max,
+        no_censorship=True, max_pieces=max_pieces,
+        p_bag_fill=p_bag_fill, alpha_depth=alpha_depth,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Regresion y output (espeja confound_floor_t2.py)
 # ---------------------------------------------------------------------------
 
@@ -422,11 +436,11 @@ def main() -> int:
         import concurrent.futures
         import multiprocessing
 
-        _worker_params = (params_nt, k, args.H_min, args.H_max,
-                          True, args.max_pieces, args.p_bag_fill, args.alpha_depth)
-
-        def _run(s):
-            return simulate_stress_game(s, *_worker_params)
+        worker_args = [
+            (s, params_nt, k, args.H_min, args.H_max,
+             args.max_pieces, args.p_bag_fill, args.alpha_depth)
+            for s in seeds
+        ]
 
         # Usar spawn para evitar deadlock de fork en Colab (numpy/scipy inician
         # threads en el proceso padre que se congelan al hacer fork).
@@ -434,7 +448,7 @@ def main() -> int:
         with concurrent.futures.ProcessPoolExecutor(
             max_workers=args.n_workers, mp_context=ctx
         ) as ex:
-            futures = {ex.submit(_run, s): s for s in seeds}
+            futures = {ex.submit(_simulate_worker, wa): wa[0] for wa in worker_args}
             for i, fut in enumerate(concurrent.futures.as_completed(futures)):
                 all_decisions.extend(fut.result())
                 if (i + 1) % 10 == 0:
