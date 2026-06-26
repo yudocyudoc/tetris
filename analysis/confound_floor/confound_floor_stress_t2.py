@@ -158,7 +158,8 @@ def bag_en_relleno_fill(
     La inyeccion es bag-aware en el RELLENO pero no en la decision t+2.
     """
     if rng.random() >= p_bag_fill:
-        return pi_fill_base(board, piece)
+        board_r, _ = pi_fill_base(board, piece)
+        return board_r, {"injected": False, "n_jl": -1}
 
     # Calcular n_JL_restantes en la bolsa actual
     bag_remaining = current_bag_state(gen)
@@ -166,7 +167,7 @@ def bag_en_relleno_fill(
 
     placements = valid_placements(board, piece)
     if not placements:
-        return None, {}
+        return None, {"injected": False, "n_jl": n_jl}
 
     scored = []
     for shape, col, row in placements:
@@ -178,7 +179,7 @@ def bag_en_relleno_fill(
         scored.append((shape, col, row, new_board, depth))
 
     if not scored:
-        return None, {}
+        return None, {"injected": True, "n_jl": n_jl}
 
     if n_jl >= 1:
         # JL en bolsa: crear huecos profundos (maximizar depth)
@@ -187,7 +188,7 @@ def bag_en_relleno_fill(
         # Sin JL: tablero limpio (minimizar depth)
         scored.sort(key=lambda x: x[4])
 
-    return scored[0][3], {}
+    return scored[0][3], {"injected": True, "n_jl": n_jl}
 
 
 # ---------------------------------------------------------------------------
@@ -229,6 +230,7 @@ def simulate_stress_game(
     # Estado del paso anterior para logging diagnostico
     prev_n_jl_fill: Optional[int] = None
     prev_depth_after_fill: Optional[float] = None
+    prev_fill_injected: Optional[bool] = None
 
     for _ in range(max_pieces):
         piece = gen.advance()
@@ -241,12 +243,14 @@ def simulate_stress_game(
         board_depth_now = hole_depth_score(board)
 
         # Avanzar tablero con generador bag-en-relleno
-        board_after, _ = bag_en_relleno_fill(board, piece, gen, p_bag_fill, rng_fill)
+        board_after, fill_info = bag_en_relleno_fill(board, piece, gen, p_bag_fill, rng_fill)
+        fill_injected_now = fill_info.get("injected", False)
         if board_after is None:
             if no_censorship:
                 board = empty_board()
                 prev_n_jl_fill = None
                 prev_depth_after_fill = None
+                prev_fill_injected = None
                 continue
             else:
                 break
@@ -265,6 +269,7 @@ def simulate_stress_game(
                 board = board_after
                 prev_n_jl_fill = n_jl_now
                 prev_depth_after_fill = depth_after_fill_now
+                prev_fill_injected = fill_injected_now
                 continue
 
             def no_tracker_t2_term(res_board: np.ndarray) -> float:
@@ -312,6 +317,7 @@ def simulate_stress_game(
                     "board_depth_at_decision": board_depth_now,  # diag: profundidad del tablero actual
                     "n_jl_fill_prev": prev_n_jl_fill if prev_n_jl_fill is not None else -1,
                     "depth_after_fill_prev": prev_depth_after_fill if prev_depth_after_fill is not None else -1.0,
+                    "fill_injected_prev": int(prev_fill_injected) if prev_fill_injected is not None else -1,
                     "compatible_count": count,
                     "p_stat_clase": p_stat,
                     "p_tracker_clase": p_tracker,
@@ -330,6 +336,7 @@ def simulate_stress_game(
 
         prev_n_jl_fill = n_jl_now
         prev_depth_after_fill = depth_after_fill_now
+        prev_fill_injected = fill_injected_now
         board = board_after
 
     return decisions
@@ -519,6 +526,25 @@ def main() -> int:
         print(f"\nDIAGNOSTICO DE INYECCION (p_bag_fill={args.p_bag_fill}):")
         print(f"  corr(n_JL_fill_prev, depth_tras_inyectar) = {c1:+.4f}  <- canal abierto?")
         print(f"  corr(n_JL_fill_prev, depth_en_decision)   = {c2:+.4f}  <- canal vivo en decision?")
+
+        # Fraccion de aplicacion efectiva: cuantos fills usaron logica bag-aware
+        df_inj = df_diag[df_diag["fill_injected_prev"] == 1]
+        frac_applied = len(df_inj) / len(df_diag)
+        print(f"  frac_fill_inyeccion_aplicada               = {frac_applied:.3f}  "
+              f"(nominal: {args.p_bag_fill:.2f})")
+
+        # Entre fills inyectados: diferencia de depth por nivel de n_JL
+        # Si es ~0 con frac_applied alta: la regla no crea diferencia (bug en logica)
+        # Si frac_applied baja: la condicion de activacion casi nunca dispara
+        if len(df_inj) > 5:
+            jl_pos = df_inj[df_inj["n_jl_fill_prev"] >= 1]["depth_after_fill_prev"]
+            jl_zero = df_inj[df_inj["n_jl_fill_prev"] == 0]["depth_after_fill_prev"]
+            if len(jl_pos) > 0 and len(jl_zero) > 0:
+                delta = jl_pos.mean() - jl_zero.mean()
+                print(f"  E[depth_after | n_JL>=1, injected]        = {jl_pos.mean():.3f}")
+                print(f"  E[depth_after | n_JL=0,  injected]        = {jl_zero.mean():.3f}")
+                print(f"  delta (>0 = regla crea profundidad)        = {delta:+.3f}")
+
         if abs(c1) > 0.05 and abs(c2) < 0.02:
             print("  DIAGNOSTICO: inyeccion funciona pero el fill la borra antes de la decision.")
         elif abs(c1) < 0.02:
