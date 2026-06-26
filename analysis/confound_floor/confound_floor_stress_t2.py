@@ -486,23 +486,7 @@ def main() -> int:
             print(f"{label:<8}  ERROR: {e}")
             continue
 
-        # Diagnostico: piso se aparta de cero?
-        ob = res["oracle"]["beta"]
-        op = res["oracle"]["pvalue"]
-        ci_lo = res["oracle"]["ci_low"]
-        ci_hi = res["oracle"]["ci_high"]
-        if ob is not None and op is not None:
-            if op < 0.05:
-                estado = "FALLO — piso se aparta de cero"
-            else:
-                estado = "ok"
-            ci_str = f"({ci_lo:.3f}, {ci_hi:.3f})" if ci_lo is not None else "n/d"
-            print(f"{label:<8} {res['n_decisions']:>6}  "
-                  f"{res['bruto']['beta']:>+11.4f} {res['bruto']['pvalue']:>8.4f}  "
-                  f"{ob:>+11.4f} {op:>8.4f}  {ci_str:>18}  {estado}")
-        else:
-            print(f"{label:<8}  regresion no convergida")
-
+        # Guardar siempre, incluso si bruto no convergio
         bin_results[label] = {
             "n_decisions": res["n_decisions"],
             "p_bag_fill": args.p_bag_fill,
@@ -511,6 +495,26 @@ def main() -> int:
             "bruto": res["bruto"],
             "oracle": res["oracle"],
         }
+
+        # Diagnostico: piso se aparta de cero?
+        ob = res["oracle"]["beta"]
+        op = res["oracle"]["pvalue"]
+        ci_lo = res["oracle"]["ci_low"]
+        ci_hi = res["oracle"]["ci_high"]
+
+        def _fmt(val, fmt_str: str, fallback: str = "        n/d") -> str:
+            return format(val, fmt_str) if val is not None else fallback
+
+        if ob is not None and op is not None:
+            estado = "FALLO — piso se aparta de cero" if op < 0.05 else "ok"
+            ci_str = f"({ci_lo:.3f}, {ci_hi:.3f})" if ci_lo is not None else "n/d"
+            print(f"{label:<8} {res['n_decisions']:>6}  "
+                  f"{_fmt(res['bruto']['beta'], '+11.4f')} {_fmt(res['bruto']['pvalue'], '8.4f')}  "
+                  f"{ob:>+11.4f} {op:>8.4f}  {ci_str:>18}  {estado}")
+        else:
+            print(f"{label:<8} {res['n_decisions']:>6}  "
+                  f"{_fmt(res['bruto']['beta'], '+11.4f')} {_fmt(res['bruto']['pvalue'], '8.4f')}  "
+                  f"{'oracle no convergido':>38}")
 
     output = {
         "params": {
