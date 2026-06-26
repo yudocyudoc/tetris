@@ -623,9 +623,24 @@ def fit_conditional_logit_l2(
     valid_decisions = n_alts[n_alts >= 2].index
     df = df[df["decision_id"].isin(valid_decisions)].copy()
 
+    n_before_chosen_filter = df["decision_id"].nunique()
     chosen_per_dec = df.groupby("decision_id")["chosen"].sum()
     valid_decisions = chosen_per_dec[chosen_per_dec == 1].index
     df = df[df["decision_id"].isin(valid_decisions)].copy()
+    n_after_chosen_filter = df["decision_id"].nunique()
+
+    if n_before_chosen_filter > 0:
+        frac_kept = n_after_chosen_filter / n_before_chosen_filter
+        if frac_kept < 0.5:
+            import warnings as _warnings
+            _warnings.warn(
+                f"[fit_conditional_logit_l2{' ' + label if label else ''}] "
+                f"chosen_sum==1 eliminó {n_before_chosen_filter - n_after_chosen_filter}/"
+                f"{n_before_chosen_filter} grupos ({100*(1-frac_kept):.0f}% descartado). "
+                f"Posible decision_id no-único entre partidas. "
+                f"Fix: df['decision_id'] = df['game_id'].astype(str) + '_' + df['decision_id'].astype(str)",
+                stacklevel=2,
+            )
 
     if len(df) == 0:
         return {"error": "No hay decisiones válidas"}
@@ -735,9 +750,24 @@ def fit_conditional_logit(df: pd.DataFrame, feature_cols: List[str], label: str 
     valid_decisions = n_alts[n_alts >= 2].index
     df = df[df["decision_id"].isin(valid_decisions)].copy()
 
+    n_before_chosen_filter = df["decision_id"].nunique()
     chosen_per_dec = df.groupby("decision_id")["chosen"].sum()
     valid_decisions = chosen_per_dec[chosen_per_dec == 1].index
     df = df[df["decision_id"].isin(valid_decisions)].copy()
+    n_after_chosen_filter = df["decision_id"].nunique()
+
+    if n_before_chosen_filter > 0:
+        frac_kept = n_after_chosen_filter / n_before_chosen_filter
+        if frac_kept < 0.5:
+            import warnings as _warnings
+            _warnings.warn(
+                f"[fit_conditional_logit{' ' + label if label else ''}] "
+                f"chosen_sum==1 eliminó {n_before_chosen_filter - n_after_chosen_filter}/"
+                f"{n_before_chosen_filter} grupos ({100*(1-frac_kept):.0f}% descartado). "
+                f"Posible decision_id no-único entre partidas. "
+                f"Fix: df['decision_id'] = df['game_id'].astype(str) + '_' + df['decision_id'].astype(str)",
+                stacklevel=2,
+            )
 
     if len(df) == 0:
         return {"error": "No hay decisiones válidas"}
