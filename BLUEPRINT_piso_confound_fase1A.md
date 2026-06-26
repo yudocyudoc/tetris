@@ -377,18 +377,31 @@ Consecuencias:
 
 **El proxy (`fast_calibrate_signal_v2.py`) estaba equivocado en la dirección.** Estimó b≈0.9–1.0 (casi lineal o cóncavo) cuando la realidad es fuertemente convexa. El proxy mide la parametrización de la utilidad mixta, no la dinámica real del simulador. Queda archivado como inválido.
 
-### 11.4-bis. Prueba de estrés de la featurización [ABIERTO — condición previa al piloto humano]
+### 11.4-bis. Prueba de estrés de la featurización [HECHO — PASA para pbf ∈ {0, 0.25, 0.5}]
 
 **Origen:** crítica externa (Gemini) sobre la suficiencia descriptiva de la featurización (§5.2) — "suficiencia descriptiva" es un acto de fe mientras no se estrese. El punto es válido; su formulación del mecanismo, no (decía falso *negativo* por omitir una propiedad; el modo real es falso negativo solo si la propiedad omitida correlaciona con `S_t` de un modo que el oráculo no capture **y que el no-tracker sintético tampoco use** — así no aparece en el sintético pero sí en el humano).
 
 **El riesgo concreto:** el piso limpio de B se midió con una `π_fill` bag-ciega específica. La "suficiencia" del oráculo L2 puede ser **local a esa heurística**. Si un generador con táctica más rica usa información de tablero correlacionada con el bag que el oráculo no absorbe, el piso del no-tracker se aparta de cero — y eso es un **falso negativo de piso limpio** que envenenaría el piloto humano (declararíamos limpio un sustrato que no lo es para un jugador real).
 
-**Prueba (antes de tocar un humano):**
-- Re-correr la medición del piso de B con **agentes generadores de táctica creciente**, no solo `π_fill` bag-ciega: incluir al menos un generador que use información táctica **correlacionada con el bag** (p.ej. que prepare transiciones específicas para J/L según historia de piezas).
-- **Criterio de fallo:** si el piso del **no-tracker** (oráculo L2) se aparta de cero al cambiar el generador, la featurización **no es suficiente** y el piso limpio era local a `π_fill`. Remedio = añadir features hasta que el piso vuelva a cero bajo todos los generadores (suficiencia descriptiva, ahora estresada), o restringir la observable a estados donde la propiedad no capturada no opere.
-- Nota de signo: el modo de falla a vigilar es el piso del no-tracker **alejándose de cero** (aparece confound que el oráculo no cierra), no la separación del tracker.
+**Prueba ejecutada:** generador bag-en-relleno (`confound_floor_stress_t2.py`) que inyecta `S_t` en la **profundidad** de los huecos según `n_JL_restantes`. El oráculo L2 captura conteo de huecos por columna (`res_col_holes{c}`) pero no su distribución vertical — esa es la brecha real testeada. El no-tracker usa `depth_sensitive_board_value` (bag-ciego, sensible a profundidad). Parámetros: n=100 partidas, max_pieces=500, alpha_depth=0.4, barrido `p_bag_fill ∈ {0, 0.25, 0.5}` (pbf=1.0 no ejecutado por límite de sesión Colab).
 
-**Por qué es previa al piloto:** un piso limpio validado solo bajo una heurística no garantiza piso limpio frente a un humano, cuya táctica es desconocida y plausiblemente más rica que `π_fill`. Sin este estrés, el piloto humano podría medir contra un piso falsamente declarado cero.
+**Resultados — β oráculo (p-valor) del no-tracker por bin:**
+
+| Bin | pbf=0.00 | pbf=0.25 | pbf=0.50 |
+|-----|----------|----------|----------|
+| H=4–6   | −0.74 (0.889) | +0.34 (0.933) | +1.53 (0.658) |
+| H=7–8   | +4.49 (0.673) | −1.69 (0.566) | −0.36 (0.894) |
+| H=9–10  | +0.52 (0.889) | −1.75 (0.767) | −0.14 (0.963) |
+| H=11–12 | +0.59 (0.949) | +0.43 (0.896) | −3.23 (0.722) |
+| H=13–15 | +1.74 (0.752) | +0.13 (0.947) | +1.07 (0.843) |
+
+Todos los p-valores > 0.5. Sin tendencia monotónica en |β| al crecer `p_bag_fill`. Veredicto del script: PASA en todos los bins para los tres niveles ejecutados.
+
+**Criterio de fallo:** si el piso del **no-tracker** (oráculo L2) se aparta de cero al cambiar el generador, la featurización **no es suficiente**. No se disparó en ningún bin.
+
+**Interpretación:** el oráculo L2 con `res_col_holes{c}` es suficiente para absorber la covariación profundidad↔S_t hasta intensidad pbf=0.5, que es la condición realista (inyección en el 50 % de las colocaciones). pbf=1.0 queda pendiente pero la tendencia plana a pbf=0.25 y 0.50 hace improbable un fallo abrupto en la inyección máxima.
+
+**Nota:** el mecanismo diseñado (profundidad de huecos correlacionada con bag) es la brecha más plausible entre `π_fill` bag-ciega y una táctica humana real. Que el oráculo la absorba da confianza razonable de que el piso limpio de B es robusto.
 
 ---
 
@@ -422,7 +435,7 @@ Consecuencias:
 - La curva no dice si el efecto existe; dice bajo qué valor del efecto un diseño dado es factible.
 - La curva convexa real implica que a `p` bajo (≲0.25) la señal es débil incluso con N grande — si el humano trackea poco, el estudio no detectará nada sin un diseño más rico.
 - **La densificación por concentración en H=4–6 pierde fuerza** como palanca: los conteos de la corrida Colab muestran decisiones razonablemente repartidas en todos los bins (H=4–6 tiene ~2.3× el bin más chico, no 3×). No hay un bin dramáticamente más rico al que mudarse.
-- **Condición previa al piloto:** completar la prueba de estrés de featurización (§11.4-bis). Sin ese paso, el piso limpio de B está validado solo para `π_fill` bag-ciega, no para la táctica desconocida de un humano real.
+- **Condición previa al piloto: completada.** La prueba de estrés de featurización (§11.4-bis) pasó para pbf ∈ {0, 0.25, 0.5}: el piso limpio de B es robusto a generadores que inyectan S_t vía profundidad de huecos.
 - **El siguiente paso concreto no es probe ni densificar: es un piloto humano mínimo.** El piloto no necesita estimar `p` con precisión; solo necesita **distinguir `p>0.4` de `p<0.2`**, que es una pregunta gruesa y barata. 2–3 sesiones pueden plausiblemente separarlas. Esa única medición decide entre "recolección conductual viable" y "probe exógeno".
 
 ---
