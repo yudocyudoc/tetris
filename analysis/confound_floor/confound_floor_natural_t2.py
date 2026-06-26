@@ -277,6 +277,8 @@ def assign_bin(H: int) -> Optional[str]:
 def run_natural_regressions(df: pd.DataFrame, extend_oracle: bool) -> Dict:
     """Corre bruto y oracle (sin features de profundidad) para un bin."""
     df = df.copy()
+    # decision_id es local a cada partida; crear key unico para el estimador
+    df["decision_id"] = df["game_id"].astype(str) + "_" + df["decision_id"].astype(str)
 
     feature_cols_bruto = ["p_grad_excess", "p_stat_clase"]
 
