@@ -631,14 +631,16 @@ def fit_conditional_logit_l2(
 
     if n_before_chosen_filter > 0:
         frac_kept = n_after_chosen_filter / n_before_chosen_filter
-        if frac_kept < 0.5:
+        n_dropped = n_before_chosen_filter - n_after_chosen_filter
+        if frac_kept < 0.95:
             import warnings as _warnings
             _warnings.warn(
                 f"[fit_conditional_logit_l2{' ' + label if label else ''}] "
-                f"chosen_sum==1 eliminó {n_before_chosen_filter - n_after_chosen_filter}/"
-                f"{n_before_chosen_filter} grupos ({100*(1-frac_kept):.0f}% descartado). "
-                f"Posible decision_id no-único entre partidas. "
-                f"Fix: df['decision_id'] = df['game_id'].astype(str) + '_' + df['decision_id'].astype(str)",
+                f"chosen_sum==1 descarto {n_dropped}/{n_before_chosen_filter} grupos "
+                f"({100*(1-frac_kept):.1f}% descartado, {n_after_chosen_filter} retenidos). "
+                f"En simulaciones correctas este numero debe ser 0 o casi 0. "
+                f"Posible decision_id no-unico entre partidas: "
+                f"df['decision_id'] = df['game_id'].astype(str) + '_' + df['decision_id'].astype(str)",
                 stacklevel=2,
             )
 
@@ -726,6 +728,8 @@ def fit_conditional_logit_l2(
     summary = {
         "nobs": int(len(df)),
         "n_decisions": int(len(unique_groups)),
+        "n_groups_before_filter": int(n_before_chosen_filter),
+        "n_groups_after_filter": int(n_after_chosen_filter),
         "converged": bool(result.success),
         "params": {k: float(v) for k, v in zip(feature_cols, beta)},
         "pvalues": {k: float(v) for k, v in zip(feature_cols, pvalues)},
@@ -758,14 +762,16 @@ def fit_conditional_logit(df: pd.DataFrame, feature_cols: List[str], label: str 
 
     if n_before_chosen_filter > 0:
         frac_kept = n_after_chosen_filter / n_before_chosen_filter
-        if frac_kept < 0.5:
+        n_dropped = n_before_chosen_filter - n_after_chosen_filter
+        if frac_kept < 0.95:
             import warnings as _warnings
             _warnings.warn(
                 f"[fit_conditional_logit{' ' + label if label else ''}] "
-                f"chosen_sum==1 eliminó {n_before_chosen_filter - n_after_chosen_filter}/"
-                f"{n_before_chosen_filter} grupos ({100*(1-frac_kept):.0f}% descartado). "
-                f"Posible decision_id no-único entre partidas. "
-                f"Fix: df['decision_id'] = df['game_id'].astype(str) + '_' + df['decision_id'].astype(str)",
+                f"chosen_sum==1 descarto {n_dropped}/{n_before_chosen_filter} grupos "
+                f"({100*(1-frac_kept):.1f}% descartado, {n_after_chosen_filter} retenidos). "
+                f"En simulaciones correctas este numero debe ser 0 o casi 0. "
+                f"Posible decision_id no-unico entre partidas: "
+                f"df['decision_id'] = df['game_id'].astype(str) + '_' + df['decision_id'].astype(str)",
                 stacklevel=2,
             )
 
@@ -786,6 +792,8 @@ def fit_conditional_logit(df: pd.DataFrame, feature_cols: List[str], label: str 
     summary = {
         "nobs": int(getattr(result, "nobs", len(df))),
         "n_decisions": int(df["decision_id"].nunique()),
+        "n_groups_before_filter": int(n_before_chosen_filter),
+        "n_groups_after_filter": int(n_after_chosen_filter),
         "converged": bool(getattr(result, "mle_retvals", {}).get("converged", True)),
         "params": {k: float(v) for k, v in zip(feature_cols, result.params)},
         "pvalues": {k: float(v) for k, v in zip(feature_cols, result.pvalues)},
