@@ -377,31 +377,29 @@ Consecuencias:
 
 **El proxy (`fast_calibrate_signal_v2.py`) estaba equivocado en la dirección.** Estimó b≈0.9–1.0 (casi lineal o cóncavo) cuando la realidad es fuertemente convexa. El proxy mide la parametrización de la utilidad mixta, no la dinámica real del simulador. Queda archivado como inválido.
 
-### 11.4-bis. Prueba de estrés de la featurización [HECHO — PASA para pbf ∈ {0, 0.25, 0.5}]
+### 11.4-bis. Prueba de estrés de la featurización [HECHO — PASA barrido completo pbf ∈ {0, 0.25, 0.5, 1.0}]
 
 **Origen:** crítica externa (Gemini) sobre la suficiencia descriptiva de la featurización (§5.2) — "suficiencia descriptiva" es un acto de fe mientras no se estrese. El punto es válido; su formulación del mecanismo, no (decía falso *negativo* por omitir una propiedad; el modo real es falso negativo solo si la propiedad omitida correlaciona con `S_t` de un modo que el oráculo no capture **y que el no-tracker sintético tampoco use** — así no aparece en el sintético pero sí en el humano).
 
 **El riesgo concreto:** el piso limpio de B se midió con una `π_fill` bag-ciega específica. La "suficiencia" del oráculo L2 puede ser **local a esa heurística**. Si un generador con táctica más rica usa información de tablero correlacionada con el bag que el oráculo no absorbe, el piso del no-tracker se aparta de cero — y eso es un **falso negativo de piso limpio** que envenenaría el piloto humano (declararíamos limpio un sustrato que no lo es para un jugador real).
 
-**Prueba ejecutada:** generador bag-en-relleno (`confound_floor_stress_t2.py`) que inyecta `S_t` en la **profundidad** de los huecos según `n_JL_restantes`. El oráculo L2 captura conteo de huecos por columna (`res_col_holes{c}`) pero no su distribución vertical — esa es la brecha real testeada. El no-tracker usa `depth_sensitive_board_value` (bag-ciego, sensible a profundidad). Parámetros: n=100 partidas, max_pieces=500, alpha_depth=0.4, barrido `p_bag_fill ∈ {0, 0.25, 0.5}` (pbf=1.0 no ejecutado por límite de sesión Colab).
+**Prueba ejecutada:** generador bag-en-relleno (`confound_floor_stress_t2.py`) que inyecta `S_t` en la **profundidad** de los huecos según `n_JL_restantes`. El oráculo L2 captura conteo de huecos por columna (`res_col_holes{c}`) pero no su distribución vertical — esa es la brecha real testeada. El no-tracker usa `depth_sensitive_board_value` (bag-ciego, sensible a profundidad). Parámetros: n=100 partidas, max_pieces=500, alpha_depth=0.4, barrido completo `p_bag_fill ∈ {0, 0.25, 0.5, 1.0}`.
 
 **Resultados — β oráculo (p-valor) del no-tracker por bin:**
 
-| Bin | pbf=0.00 | pbf=0.25 | pbf=0.50 |
-|-----|----------|----------|----------|
-| H=4–6   | −0.74 (0.889) | +0.34 (0.933) | +1.53 (0.658) |
-| H=7–8   | +4.49 (0.673) | −1.69 (0.566) | −0.36 (0.894) |
-| H=9–10  | +0.52 (0.889) | −1.75 (0.767) | −0.14 (0.963) |
-| H=11–12 | +0.59 (0.949) | +0.43 (0.896) | −3.23 (0.722) |
-| H=13–15 | +1.74 (0.752) | +0.13 (0.947) | +1.07 (0.843) |
+| Bin | pbf=0.00 | pbf=0.25 | pbf=0.50 | pbf=1.00 |
+|-----|----------|----------|----------|----------|
+| H=4–6   | −0.74 (0.889) | +0.34 (0.933) | +1.53 (0.658) | −6.22 (0.377) |
+| H=7–8   | +4.49 (0.673) | −1.69 (0.566) | −0.36 (0.894) | +1.98 (0.658) |
+| H=9–10  | +0.52 (0.889) | −1.75 (0.767) | −0.14 (0.963) | +2.35 (0.529) |
+| H=11–12 | +0.59 (0.949) | +0.43 (0.896) | −3.23 (0.722) | −1.84 (0.624) |
+| H=13–15 | +1.74 (0.752) | +0.13 (0.947) | +1.07 (0.843) | −0.39 (0.965) |
 
-Todos los p-valores > 0.5. Sin tendencia monotónica en |β| al crecer `p_bag_fill`. Veredicto del script: PASA en todos los bins para los tres niveles ejecutados.
+Todos los p-valores > 0.37. Sin tendencia monotónica en |β| al crecer `p_bag_fill`. Nota: el modelo bruto no convergió en H=4–6 para pbf=1.0 (betas explosivos esperables con inyección máxima); el oráculo L2 sí convergió. Veredicto del script: PASA en todos los bins para los cuatro niveles.
 
 **Criterio de fallo:** si el piso del **no-tracker** (oráculo L2) se aparta de cero al cambiar el generador, la featurización **no es suficiente**. No se disparó en ningún bin.
 
-**Interpretación:** el oráculo L2 con `res_col_holes{c}` es suficiente para absorber la covariación profundidad↔S_t hasta intensidad pbf=0.5, que es la condición realista (inyección en el 50 % de las colocaciones). pbf=1.0 queda pendiente pero la tendencia plana a pbf=0.25 y 0.50 hace improbable un fallo abrupto en la inyección máxima.
-
-**Nota:** el mecanismo diseñado (profundidad de huecos correlacionada con bag) es la brecha más plausible entre `π_fill` bag-ciega y una táctica humana real. Que el oráculo la absorba da confianza razonable de que el piso limpio de B es robusto.
+**Interpretación:** el oráculo L2 con `res_col_holes{c}` absorbe completamente la covariación profundidad↔S_t incluso con inyección máxima (pbf=1.0, 100 % de colocaciones modificadas). El piso limpio de B es robusto a este mecanismo de confound. El mecanismo diseñado (profundidad de huecos correlacionada con bag) es la brecha más plausible entre `π_fill` bag-ciega y una táctica humana real.
 
 ---
 
