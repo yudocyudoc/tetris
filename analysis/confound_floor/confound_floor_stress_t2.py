@@ -205,7 +205,19 @@ def simulate_stress_game(
     p_bag_fill: float,
     alpha_depth: float,
 ) -> List[Dict]:
-    """Simula una partida de estres y devuelve decisiones del no-tracker."""
+    """Simula una partida de estres y devuelve decisiones del no-tracker.
+
+    Logging diagnostico incluido:
+    - board_depth_at_decision: hole_depth_score(board) en el momento de decidir
+      (tablero ANTERIOR a la colocacion, formado por fills previos).
+    - depth_after_fill_prev: hole_depth_score(board_after) del paso anterior,
+      es decir la profundidad recien inyectada antes de que el no-tracker la procese.
+    - n_jl_fill_prev: n_JL_restantes que guio el fill del paso anterior.
+    Estos tres campos permiten calcular las dos correlaciones diagnosticas:
+      corr(n_jl_fill_prev, depth_after_fill_prev)  -> canal abierto tras inyeccion
+      corr(n_jl_fill_prev, board_depth_at_decision) -> canal vivo en la decision
+    Si la primera es alta y la segunda es ~0, el fill del no-tracker borra la inyeccion.
+    """
     gen = SevenBagGenerator(seed)
     rng_fill = np.random.default_rng(seed + 10)
     rng_nt = np.random.default_rng(seed + 2)
@@ -214,17 +226,32 @@ def simulate_stress_game(
     decisions: List[Dict] = []
     decision_id = 0
 
+    # Estado del paso anterior para logging diagnostico
+    prev_n_jl_fill: Optional[int] = None
+    prev_depth_after_fill: Optional[float] = None
+
     for _ in range(max_pieces):
         piece = gen.advance()
+
+        # n_JL_restantes en la bolsa ANTES del fill (para diagnostico)
+        bag_now = current_bag_state(gen)
+        n_jl_now = sum(1 for p in bag_now if p in {"J", "L"})
+
+        # Profundidad del tablero ACTUAL (antes del fill de este paso)
+        board_depth_now = hole_depth_score(board)
 
         # Avanzar tablero con generador bag-en-relleno
         board_after, _ = bag_en_relleno_fill(board, piece, gen, p_bag_fill, rng_fill)
         if board_after is None:
             if no_censorship:
                 board = empty_board()
+                prev_n_jl_fill = None
+                prev_depth_after_fill = None
                 continue
             else:
                 break
+
+        depth_after_fill_now = hole_depth_score(board_after)
 
         heights = column_heights(board)
         H = int(np.max(heights))
@@ -236,6 +263,8 @@ def simulate_stress_game(
             top_placements = get_top_k_placements_depth(board, piece, k, alpha_depth)
             if len(top_placements) < 2:
                 board = board_after
+                prev_n_jl_fill = n_jl_now
+                prev_depth_after_fill = depth_after_fill_now
                 continue
 
             def no_tracker_t2_term(res_board: np.ndarray) -> float:
@@ -246,13 +275,18 @@ def simulate_stress_game(
                 board, piece, top_placements, no_tracker_t2_term, params_no_tracker, rng_nt
             )
 
-            for idx, (shape, col, row, base_val) in enumerate(top_placements):
+            for idx, (shape, col, row, depth_val) in enumerate(top_placements):
                 res_board = place_piece(board, shape, col, row)
                 res_board, _ = clear_lines(res_board)
                 count, compatible = compatibility_class(res_board)
                 p_stat = p_stat_favorable_class(count)
                 p_tracker = p_favorable_given_class(compatible, t2_dist)
                 p_grad_excess = p_tracker - p_stat
+
+                # Bug 1 fix: base_val para el oraculo = extended_board_value estandar,
+                # NO depth_sensitive. El no-tracker elige por depth (depth_val arriba),
+                # pero el oraculo no debe ver esa funcion objetivo.
+                base_val_oracle = extended_board_value(res_board)
 
                 res_features = bcts_features(res_board)
                 res_full = board_full_features(res_board)
@@ -273,7 +307,11 @@ def simulate_stress_game(
                     "S_t_size": len(S_t),
                     "S_t": ",".join(sorted(S_t)),
                     "alternative_id": idx,
-                    "base_val": base_val,
+                    "base_val": base_val_oracle,       # extended_board_value (Bug 1 fix)
+                    "depth_val_agent": depth_val,      # depth_sensitive_board_value (lo que uso el agente)
+                    "board_depth_at_decision": board_depth_now,  # diag: profundidad del tablero actual
+                    "n_jl_fill_prev": prev_n_jl_fill if prev_n_jl_fill is not None else -1,
+                    "depth_after_fill_prev": prev_depth_after_fill if prev_depth_after_fill is not None else -1.0,
                     "compatible_count": count,
                     "p_stat_clase": p_stat,
                     "p_tracker_clase": p_tracker,
@@ -290,6 +328,8 @@ def simulate_stress_game(
                 decisions.append(row_data)
             decision_id += 1
 
+        prev_n_jl_fill = n_jl_now
+        prev_depth_after_fill = depth_after_fill_now
         board = board_after
 
     return decisions
@@ -465,6 +505,29 @@ def main() -> int:
     # Guardar log
     df.to_csv(out_dir / f"decisions_stress_k{k}.csv", index=False)
     print(f"  {len(df)} filas ({df['decision_id'].nunique()} decisiones unicas) guardadas.")
+
+    # ------------------------------------------------------------------
+    # DIAGNOSTICO: dos correlaciones para localizar borrado de inyeccion
+    # ------------------------------------------------------------------
+    # Solo filas de una alternativa por decision (idx=0) para no duplicar
+    df_diag = df[df["alternative_id"] == 0].copy()
+    df_diag = df_diag[df_diag["n_jl_fill_prev"] >= 0]  # excluir primera decision (sin prev)
+
+    if len(df_diag) > 10:
+        c1 = df_diag[["n_jl_fill_prev", "depth_after_fill_prev"]].corr().iloc[0, 1]
+        c2 = df_diag[["n_jl_fill_prev", "board_depth_at_decision"]].corr().iloc[0, 1]
+        print(f"\nDIAGNOSTICO DE INYECCION (p_bag_fill={args.p_bag_fill}):")
+        print(f"  corr(n_JL_fill_prev, depth_tras_inyectar) = {c1:+.4f}  <- canal abierto?")
+        print(f"  corr(n_JL_fill_prev, depth_en_decision)   = {c2:+.4f}  <- canal vivo en decision?")
+        if abs(c1) > 0.05 and abs(c2) < 0.02:
+            print("  DIAGNOSTICO: inyeccion funciona pero el fill la borra antes de la decision.")
+        elif abs(c1) < 0.02:
+            print("  DIAGNOSTICO: inyeccion NO abre canal (c1~0) — revisar bag_en_relleno_fill.")
+        elif abs(c2) > 0.05:
+            print("  DIAGNOSTICO: canal persiste hasta la decision — correlacion disponible para regresion.")
+        else:
+            print("  DIAGNOSTICO: señal debil en ambas correlaciones.")
+    print()
 
     # Regresion por bin
     bin_results = {}
